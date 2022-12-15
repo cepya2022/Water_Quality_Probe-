@@ -51,3 +51,16 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(19), interrupcionBT, RISING); // 19 xq en el mega Serial1 es 19 y 18 para TX y RX
   setearPines();
   //Serial.begin(9600);
+//corregirReloj(); // COMENTAR UNA VEZ AJUSTADA Y VOLVER A SUBIR
+  delay(100);
+  Serial1.begin(9600); //cambio a 9600 pq es un HC-06 (ORIGINAL 38400)
+  delay(1000);
+}
+
+void loop() {
+  delay(1000); // ver si puedo bajar este delay
+  for (int i = 0; i < minutos; i++){
+    LowPower.powerDown(SLEEP_4S, ADC_OFF, BOD_OFF);     
+  }
+  hacerAccion();
+}
