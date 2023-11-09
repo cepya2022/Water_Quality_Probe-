@@ -42,4 +42,5 @@ Additionally, it integrates a Bluetooth device using 4.0 BLE (Bluetooth Low Ener
 
 ### Software
 
-The code is available [here](https://github.com/cepya2022/Water_Quality_Probe-/blob/main/Code_Water_Quality_Probe.ino)
+The research team is continuosly working on and improving the code. It it written in 
+The updated code is available [here](https://github.com/cepya2022/Water_Quality_Probe-/blob/main/Code_Water_Quality_Probe.ino). 
