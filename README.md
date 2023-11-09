@@ -42,7 +42,7 @@ Additionally, it integrates a Bluetooth device using 4.0 BLE (Bluetooth Low Ener
 
 ### Software
 
-The research team is continuosly working on and improving the code. It is written in c++ programming language inside the Arduino IDE as it is the default language for arduino microcontrollers. The system was design to enter sleep mode inside the loop function while the ´measurement´ option is disabled or in between measurements. It includes an interruption function which is activated once a message is received via Bluetooth. This function wakes the system, executes the corresponding command and once it is finished, it enters the loop again. The different commands include turning on/off the measurement cycle and setting its frequency, data query,  sensor calibration and current state information.
+The research team is continuosly working on and improving the code. It is written in c++ programming language inside the Arduino IDE as it is the default language for arduino microcontrollers. The system was design to enter sleep mode inside the loop function while the `measurement` option is disabled or in between measurements. It includes an interruption function which is activated once a message is received via Bluetooth. This function wakes the system, executes the corresponding command and once it is finished, it enters the loop again. The different commands include turning on/off the measurement cycle and setting its frequency, data query,  sensor calibration and current state information.
 
 #### Measurement cycles
 
