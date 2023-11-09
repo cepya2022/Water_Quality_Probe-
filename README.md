@@ -6,6 +6,9 @@ The development of open-source code and hardware instruments enables both the cr
 
 The current project involves the design of a low-cost multiparametric water quakity probe that enables in situ and remote sensing of physicochemical variables relevant to the environment, such as conductivity, dissolved oxygen, temperature, and pH in bodies of water. The first prototype based on Arduino is already available, and efforts are underway to refine it in order to achieve a more robust, economical, and efficient product. This project proposes integrating the microcontroller into a single printed circuit board (PCB) that facilitates data acquisition and storage over extended periods, reduces energy consumption, and enhances robustness, considering its predominantly outdoor operation.
 
+<p>
+<img align="center" src="https://github.com/FranciscoGBianco/SondaMultiP-UNSAM/blob/main/images/Sonda.jpg" width="250"  height="300">
+</p>
 
 ### Hardware
 
@@ -14,3 +17,7 @@ The monitoring station consists of a sealed waterproof box that floats with the 
 Regarding energy aspects, a solar-powered system was designed. It includes a Li-Ion battery (or two arranged in parallel) that powers the microcontroller and sensors, connected to a 1 Watt solar panel, providing indefinite energy autonomy.
 
 Additionally, it integrates a Bluetooth device using 4.0 BLE (Bluetooth Low Energy) technology. The Serial Bluetooth Terminal® app enables remote control of the probe, such as remote power on/off, selection of measurement intervals, sensor calibration, and data query, curing, and collection. It's worth noting that each measurement includes the exact date and time it was taken. These features make it easy to remotely monitor many relevant variables over extended periods with high sampling rates, allowing for detailed time-series data collection at the study site.
+
+<p align="center">
+<img align="center" src="https://github.com/FranciscoGBianco/SondaMultiP-UNSAM/blob/main/images/Schematic_V1.0.png" width="750"  height="500">
+</p>
