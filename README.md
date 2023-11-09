@@ -21,3 +21,25 @@ Additionally, it integrates a Bluetooth device using 4.0 BLE (Bluetooth Low Ener
 <p align="center">
 <img align="center" src="https://github.com/FranciscoGBianco/SondaMultiP-UNSAM/blob/main/images/Schematic_V1.0.png" width="750"  height="500">
 </p>
+
+#### Components
+
+* Solar Panel
+* Double battery holder
+* Arduino Mega 2560 Rev3
+* Step Up Power Supply Xl6009 Dc Adjustable Dc 5v 35v 3a Max Arduino
+* Lithium Battery Charger Micro USB Module Tp4056 5v
+* HC-08 BLE Bluetooth Module
+* Micro SD Memory Reader Module: hw-125
+* DS3231 RTC Clock
+* DS18B20 Submersible Stainless Steel Digital Temperature Sensor
+* PH-4502C Liquid PH Sensor with E201-BNC Electrode
+* Conductivity Sensor Conductivity K 1.0 Kit (Atlas Scientific)
+* Gravity™ Analog Dissolved Oxygen Meter Dissolved Oxygen Sensor (Atlas Scientific)
+* 4 Channels Relay Module Optocoupled 5v High and Low Hobb
+* NPN and PNP BJT Transistors
+* Resistors
+
+### Software
+
+The code is available [here](https://github.com/cepya2022/Water_Quality_Probe-/blob/main/Code_Water_Quality_Probe.ino)
