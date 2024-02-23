@@ -29,6 +29,7 @@ unsigned long int avgval;
 //int buffer_arr[10], temp;
 float pH, T, OD; // guardan el valor de las variables FQ
 char datobt;
+char ache = 'h';
 int minutos = 3; // frecuencia de medicion
 int minprev;  // variable auxiliar
 char ODon = 'b'; // prendido/apagado del sensor
@@ -48,16 +49,20 @@ char datospH = 'b'; // enviar datos
 char datosT = 'b'; // enviar datos
 char datosReloj = 'b'; // enviar datos
 char enviar = 'b'; // enviar datos
+char cambioEstado = 'b'; // registra cambios en la configuracion
 float punto1, punto2 = 0; // calibración conductímetro
 float puntoStd = 12880; // calibración conductímetro
 String fecha = ""; // valor de la fecha y hora actual
-float punto = 0; // pto de medición (nro. de estación, ubicación, id, etc)
+//float punto = 0; // pto de medición (nro. de estación, ubicación, id, etc)
+String punto = ""; // pto de medición (nro. de estación, ubicación, id, etc)
+String frecuencia = "";
 volatile int pos;  // variable auxiliar
 char titulo = 'b'; // variable auxiliar
 char apagar = 'b';
 String receivedString = ""; // variable auxiliar
 
 String EC = "";                             //a string to hold the data from the Atlas Scientific product
+String TDS = "";
 String sensorstring = "";                             //a string to hold the data from the Atlas Scientific product
 boolean sensor_string_complete = false;               //have we received all the data from the Atlas Scientific product
 
@@ -71,15 +76,12 @@ DallasTemperature sensorT(&oneWireObjeto); // para sensor DS18B20. Pasa referenc
 
 void setup() {  
   //apagarPines();
-  //delay(100);
-  //Serial.begin(9600); //cambio a 9600 pq es un HC-06 (ORIGINAL 38400)
-  //delay(100);
-  //Serial3.begin(9600);
   delay(100);
   Serial1.begin(9600); //cambio a 9600 pq es un HC-06 (ORIGINAL 38400)
   delay(1000);
   attachInterrupt(digitalPinToInterrupt(19), interrupcionBT, RISING); // 19 xq en el mega Serial1 es 19 y 18 para TX y RX
   setearPines();
+  delay(100);
   //Serial.begin(9600);
   //corregirReloj(); // COMENTAR UNA VEZ AJUSTADA Y VOLVER A SUBIR
   chequearEstado();
@@ -87,6 +89,9 @@ void setup() {
 }
 
 void loop() { 
+  if (cambioEstado == 'a'){
+    guardarEstado();
+  }
   delay(1000); // ver si puedo bajar este delay
   for (int i = 0; i < minutos; i++){
     LowPower.powerDown(SLEEP_4S, ADC_OFF, BOD_OFF);     
@@ -95,27 +100,79 @@ void loop() {
 }
 
 void guardarPunto(){
-  punto = 0;
-  while (punto == 0){
+  Serial1.println("Escribir punto de mediciones:");
+  delay(100);
+  /*punto = "";
+  while (punto == ""){
+    //Serial1.println("Dentro del While");
     if (Serial1.available()){
-      punto = Serial1.parseFloat();
+      //Serial1.println("Dentro del if");
+      punto = Serial1.readStringUntil('\r');
+      //punto = "hola";
     }
   }
-  //String punto = " ";
-  //punto = Serial1.readStringUntil('\r');
-  delay(100);
+  delay(200);
   Serial1.print("punto guardado: ");
   Serial1.println(punto);
+  delay(100);
   Serial1.println("a medir");
   titulo = 'a';
   delay(100);
   guardarEstado();
+  delay(100);
+  }*/
+  /*punto = 0;
+  while (punto == 0){
+    if (Serial1.available()){
+      punto = Serial1.parseFloat();
+    }
+  }*/
+  /*Serial1.flush();
+  delay(200);*/
+  punto = "";
+  while (punto == ""){
+    if (Serial1.available()){
+      punto = Serial1.readStringUntil('\r');
+    }
+  }
+  delay(100);
+  Serial1.println(punto);
+  delay(200);
+  Serial1.println("Indique frecuencia de medición:");
+  frecuencia = "";
+  //while (frecuencia[0] != "n" || frecuencia[0] != "h" || frecuencia[0] != "q" || frecuencia[0] != "t" || frecuencia[0] != "o"){
+  while (frecuencia == ""){
+    //frecuencia = "";
+    if (Serial1.available()){
+      frecuencia = Serial1.readStringUntil('\r');
+    }
+  }
+  Serial1.println((int)frecuencia[0]);  // Borrar
+  Serial1.println((int)ache);  // Borrar
+  Serial1.println(frecuencia[0] == 'h');  // Borrar
+  if (frecuencia[0] == 'n'){minprev = 3;}
+  else if (frecuencia[0] == 'h'){minprev = 70;}
+  else if (frecuencia[0] == 'q'){minprev = 216;}
+  else if (frecuencia[0] == 't'){minprev = 441;}
+  else {minprev = 14;}
+  delay(300);
+  Serial1.print("punto guardado: ");
+  Serial1.println(punto);
+  Serial1.print("frecuencia de medición: ");
+  Serial1.println(minprev/15);
+  delay(200);
+  guardarEstado();
+  delay(100);
+  //Serial1.println("a medir");
+  titulo = 'a';
+  delay(100);
 }
 
 void hacerTodo(){
   if (titulo == 'b'){
     guardarPunto();
   }
+  delay(500);
   Serial1.println("a medir");
   delay(100);
   medirpH(0);
@@ -205,6 +262,7 @@ void setearRectapH(){
   rectapH = 'b';
   delay(100);
   guardarEstado();
+  delay(200);
 }
 
 void calibrarPeachimetro(){
@@ -269,13 +327,14 @@ void calibrarPeachimetro(){
   digitalWrite(relepH, LOW);
 
   guardarEstado();
+  delay(200);
 }
 
 void medirpH(int p){
   digitalWrite(relepH, HIGH);
   delay(100);
   digitalWrite(bjtpH, HIGH);
-  for (int i = 0; i < 179; i++){ // para que este 3 min hasta medir
+  for (int i = 0; i < 2; i++){ // para que este 3 sec hasta medir
     delay(1000);    
   }
   avgval = 0;
@@ -323,7 +382,7 @@ void mandarOD(){
 }
 
 void mandarpH(){
-  for (int i = 0 ; i < 1 ; i++){
+  for (int i = 0 ; i < 10 ; i++){
     medirpH(0);
     Serial1.print("pH = ");
     Serial1.println(pH);
@@ -341,10 +400,13 @@ void mandarEC(){
   medirEC();
   Serial1.print("EC = ");
   Serial1.println(EC);
+  Serial1.print("TDS = ");
+  Serial1.println(TDS);
   minutos = minprev;
   medir = onprev;
   datosEC = 'b';
   EC = "";
+  TDS = "";
 }
 
 void mandarT(){
@@ -402,11 +464,13 @@ void pegarDatosEnSD(){
     datos.print(";");
     datos.print(EC);
     datos.print(";");
+    datos.print(TDS);
+    datos.print(";");
     datos.print(pH);
     datos.print(";");
     datos.print(T);
     datos.print(";");
-    datos.println(String(punto));
+    datos.println(punto);
     //datos.print(";");
     //analogValBat = analogRead(A3);
     //voltBat = 4.04 * analogValBat / 1024.00;
@@ -424,13 +488,15 @@ void pegarDatosEnSD(){
   digitalWrite(releSD_RTC, HIGH);
   delay(100);
 
-  Serial3.begin(9600);
+  Serial3.begin(9600); // Manda los datos al NodeMCU8266 para conexión WiFi
   delay(100);
   Serial3.print(fecha);
   Serial3.print(";");
   Serial3.print(OD);
   Serial3.print(";");
   Serial3.print(EC);
+  Serial3.print(";");
+  Serial3.print(TDS);
   Serial3.print(";");
   Serial3.print(pH);
   Serial3.print(";");
@@ -440,10 +506,12 @@ void pegarDatosEnSD(){
   delay(100);
   Serial3.end();
   EC = "";
+  TDS = "";
 }
 
 void chequearEstado(){
   Serial1.println("Voy a mirar los datos");
+  delay(200);
   digitalWrite(releSD_RTC, LOW);
   delay(1000);
   digitalWrite(bjtSD_RTC, HIGH);
@@ -458,28 +526,17 @@ void chequearEstado(){
   }
   estadoprev = SD.open("estado.txt");
   if (estadoprev){
-    //delay(500);
-    //Serial.println("abri el archivo"); 
     estadoprev.seek(0);
-    //BLT.print("*G");
-    /*while (estadoprev.available()){
-      Serial.write(estadoprev.read());
-      //pos++;
-      //delay(10);
-    }*/
     delay(500);
     receivedString = estadoprev.readStringUntil('\n');
     delay(500);
-
-    //Serial.print("receivedString: ");
-    //Serial.println(receivedString);
     
     delay(100);
     estadoprev.close();
     delay(100);
 
   }else{
-    Serial1.println("no hay estado previo");
+    Serial1.println("No hay estado previo");
   }
   delay(100);
   digitalWrite(bjtSD_RTC, LOW);
@@ -510,8 +567,8 @@ void chequearEstado(){
               ordenada = token2.toFloat();
               medir = token3.charAt(0);
               minutos = token4.toInt();
-              punto = receivedString.toFloat();
-              if (punto != 0){
+              punto = receivedString;
+              if ((int)punto[0] == 0){
                 titulo = 'a';
               }
             }
@@ -557,11 +614,13 @@ void guardarEstado(){
     estadoprev.print(";");
     estadoprev.print(minutos);
     estadoprev.print(";");
+    //estadoprev.print("hola");
     estadoprev.print(punto);
-    //estadoprev.println("nueva linea");
-    Serial1.println("Cambios guardados");
-
+    delay(100);
     estadoprev.close();
+    delay(100);
+
+    Serial1.println("Cambios guardados");
   }else{
     Serial1.println("Cambios no guardados");
   }
@@ -570,6 +629,9 @@ void guardarEstado(){
   delay(100);
   digitalWrite(releSD_RTC, HIGH);
   delay(100);
+
+  cambioEstado = 'b';
+  minutos = minprev;
 }
 
 void mandarDatos(){
@@ -580,22 +642,16 @@ void mandarDatos(){
   if (SD.begin(SSpin)){ //tarjeta sd conectada al canals SS vía pin 4
     //Serial.println("memoria encontrada !");
   }else{
-    //digitalWrite(LedPin, HIGH);
     Serial1.println("memoria no encontrada !");
-    //Serial1.println("no encontro la memoria");
-    //digitalWrite(13, HIGH);
   }
   datos = SD.open("mega.txt");
   if (datos){
     //Serial.println("abrio el archivo");
     datos.seek(pos);
-    //BLT.print("*G");
     while (datos.available()){
       Serial1.write(datos.read());
       pos++;
-      //delay(10);
     }
-    //BLT.print("*");  
     datos.close();
   }
   else{
@@ -709,6 +765,7 @@ void corregirReloj(){
 }
   
 void medirEC(){
+  char sensorstring_array[30]; 
   EC = "";
   digitalWrite(releEC, HIGH);
   delay(100);
@@ -716,6 +773,10 @@ void medirEC(){
   delay(1500);
   Serial2.begin(9600); // Serial2 es RX3 (15) a SDA y TX3 (14) a SCL
   delay(1500);
+  //Serial2.print("O,TDS,1");
+  //Serial2.print('\r');
+  //EC = Serial2.readStringUntil(13);
+  //Serial1.println(EC);
   //Serial2.listen();  
   /*while (Serial2.available() > 0) {                     //if we see that the Atlas Scientific product has sent a character
     char inchar = (char)Serial2.read();              //get the char we just received
@@ -729,21 +790,10 @@ void medirEC(){
   Serial2.print("RT," + String(T));  // chequear que esto funcione
   Serial2.print('\r');
   delay(1200);
-  EC = Serial2.readStringUntil(13);
-  /*int a = 0;
-  while (Serial2.available() > 0) {                     //if we see that the Atlas Scientific product has sent a character
-    //Serial2.print("T," + String(T));  // chequear que esto funcione
-    char inchar = (char)Serial2.read();              //get the char we just received
-    if (isdigit(inchar) || inchar == '.' || inchar == ','){
-      EC += inchar;  // aca esta leyendo lo del sensor                         //add the char to the var called sensorstring
-    }
-    if (inchar == '\r') {                             //if the incoming character is a <CR>
-      //a++;
-      //if (a > 1){
-        break;
-      //}
-    }
-  }*/
+  sensorstring = Serial2.readStringUntil(13);
+  sensorstring.toCharArray(sensorstring_array, 30);   //convert the string to a char array
+  EC = strtok(sensorstring_array, ",");               //let's pars the array at each comma
+  TDS = strtok(NULL, ",");
   delay(100);
   Serial2.end();
   if (ECon == 'b'){
@@ -972,31 +1022,39 @@ void interrupcionBT(){
     break;
     
     case 'o':
-    minutos = 14; // tendría 1 seg más de delay con los 3200
+    minprev = 14; // tendría 1 seg más de delay con los 3200
+    minutos = 0;
     //msdelay = 2200;
     Serial1.println("1 min");
-    guardarEstado();
+    cambioEstado = 'a';
+    //guardarEstado();
     break;
 
     case 'q':
-    minutos = 216; // 
+    minprev = 216; // 
+    minutos = 0;
     //msdelay = 2200;
     Serial1.println("15 min");
-    guardarEstado();
+    cambioEstado = 'a';
+    //guardarEstado();
     break;
 
     case 't':
-    minutos = 441; // tendría 2 seg más de delay con los 3200 (en realidad eran 26 o 27 seg, no 30 --> puse 443 en vez de 442) --> 1er prueba: +8 seg, pongo en 441
+    minprev = 441; // tendría 2 seg más de delay con los 3200 (en realidad eran 26 o 27 seg, no 30 --> puse 443 en vez de 442) --> 1er prueba: +8 seg, pongo en 441
+    minutos = 0;
     //msdelay = 1200;
     Serial1.println("30 min");
-    guardarEstado();
+    cambioEstado = 'a';
+    //guardarEstado();
     break;
 
     case 'h':
-    minutos = 70; // 
+    minprev = 70; // 
+    minutos = 0;
     //msdelay = 1200;
     Serial1.println("5 min");
-    guardarEstado();
+    cambioEstado = 'a';
+    //guardarEstado();
     break;
 
     /*case '6':
@@ -1006,24 +1064,30 @@ void interrupcionBT(){
     break;*/
 
     case 'n':
-    minutos = 3;
+    minprev = 3;
+    minutos = 0;
     Serial1.println("15 seg");
-    guardarEstado();
+    cambioEstado = 'a';
+    //guardarEstado();
     break;
 
     case 'g': 
     medir = 'a';
     //guardarEstado();
     //Serial1.println("a medir");
-    Serial1.println("escribir punto de mediciones (solo numeros)");
+    Serial1.println("Configurar medición");
     break;
       
     case 'r':
     medir = 'b';
     titulo = 'b';
-    punto = 0;
+    punto = "";
+    minprev = 0;
+    minutos = 0;
     Serial1.println("apagando...");
-    guardarEstado();
+    cambioEstado = 'a';
+    //guardarEstado();
+    delay(200);
     Serial1.println("off");
     break;
 
@@ -1188,6 +1252,9 @@ void interrupcionBT(){
 }
 
 void hacerAccion(){
+  if (cambioEstado == 'a'){
+    guardarEstado();
+  }
   if (medir == 'a'){
     hacerTodo();
   }
