@@ -100,64 +100,38 @@ void loop() {
 }
 
 void guardarPunto(){
+  Serial1.flush();
   Serial1.println("Escribir punto de mediciones:");
-  delay(100);
-  /*punto = "";
-  while (punto == ""){
-    //Serial1.println("Dentro del While");
-    if (Serial1.available()){
-      //Serial1.println("Dentro del if");
-      punto = Serial1.readStringUntil('\r');
-      //punto = "hola";
-    }
-  }
-  delay(200);
-  Serial1.print("punto guardado: ");
-  Serial1.println(punto);
-  delay(100);
-  Serial1.println("a medir");
-  titulo = 'a';
-  delay(100);
-  guardarEstado();
-  delay(100);
-  }*/
-  /*punto = 0;
-  while (punto == 0){
-    if (Serial1.available()){
-      punto = Serial1.parseFloat();
-    }
-  }*/
-  /*Serial1.flush();
-  delay(200);*/
+  delay(300);
   punto = "";
-  while (punto == ""){
+  delay(200);
+  while (punto == "" || (int)punto[0] == 10){
     if (Serial1.available()){
       punto = Serial1.readStringUntil('\r');
     }
   }
-  delay(100);
+  //delay(100);
+  Serial1.print("Nuevo punto: ");
   Serial1.println(punto);
-  delay(200);
+  delay(500);
   Serial1.println("Indique frecuencia de medición:");
   frecuencia = "";
-  //while (frecuencia[0] != "n" || frecuencia[0] != "h" || frecuencia[0] != "q" || frecuencia[0] != "t" || frecuencia[0] != "o"){
+  //while (frecuencia[0] != 'n' || frecuencia[0] != 'h' || frecuencia[0] != 'q' || frecuencia[0] != 't' || frecuencia[0] != 'o'){
   while (frecuencia == ""){
     //frecuencia = "";
     if (Serial1.available()){
       frecuencia = Serial1.readStringUntil('\r');
     }
   }
-  Serial1.println((int)frecuencia[0]);  // Borrar
-  Serial1.println((int)ache);  // Borrar
-  Serial1.println(frecuencia[0] == 'h');  // Borrar
+  delay(100);
   if (frecuencia[0] == 'n'){minprev = 3;}
   else if (frecuencia[0] == 'h'){minprev = 70;}
   else if (frecuencia[0] == 'q'){minprev = 216;}
-  else if (frecuencia[0] == 't'){minprev = 441;}
-  else {minprev = 14;}
+  else if (frecuencia[0] == 'o'){minprev = 14;}
+  else {minprev = 441;}
   delay(300);
-  Serial1.print("punto guardado: ");
-  Serial1.println(punto);
+  //Serial1.print("punto guardado: ");
+  //Serial1.println(punto);
   Serial1.print("frecuencia de medición: ");
   Serial1.println(minprev/15);
   delay(200);
@@ -568,9 +542,11 @@ void chequearEstado(){
               medir = token3.charAt(0);
               minutos = token4.toInt();
               punto = receivedString;
-              if ((int)punto[0] == 0){
-                titulo = 'a';
+              if ((int)punto[0] == 0 && medir == 'b'){
+                titulo = 'b';
               }
+              else if ((int)punto[0] != 0 && medir == 'b'){titulo = 'b';}
+              else {titulo = 'a';}
             }
           }
         }
@@ -586,6 +562,8 @@ void chequearEstado(){
   Serial1.println(minutos/15);
   Serial1.print("punto: ");
   Serial1.println(punto);
+  //Serial1.print("punto[0]: ");
+  //Serial1.println((int)punto[0]);
 }
 
 void guardarEstado(){
@@ -614,7 +592,6 @@ void guardarEstado(){
     estadoprev.print(";");
     estadoprev.print(minutos);
     estadoprev.print(";");
-    //estadoprev.print("hola");
     estadoprev.print(punto);
     delay(100);
     estadoprev.close();
@@ -1081,14 +1058,14 @@ void interrupcionBT(){
     case 'r':
     medir = 'b';
     titulo = 'b';
-    punto = "";
+    //punto = "";
     minprev = 0;
     minutos = 0;
     Serial1.println("apagando...");
     cambioEstado = 'a';
     //guardarEstado();
     delay(200);
-    Serial1.println("off");
+    //Serial1.println("off");
     break;
 
     case 'y': 
