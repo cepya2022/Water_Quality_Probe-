@@ -590,7 +590,7 @@ void guardarEstado(){
     estadoprev.print(";");
     estadoprev.print(medir);
     estadoprev.print(";");
-    estadoprev.print(minutos);
+    estadoprev.print(minprev);
     estadoprev.print(";");
     estadoprev.print(punto);
     delay(100);
