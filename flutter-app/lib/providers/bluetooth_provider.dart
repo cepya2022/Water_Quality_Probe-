@@ -400,7 +400,7 @@ class BluetoothProvider extends ChangeNotifier {
   Future<void> shareCsv() async {
     try {
       final directory = await getTemporaryDirectory();
-      final filePath = '${directory.path}/datos_wcp.csv';
+      final filePath = '${directory.path}/sensa.csv';
       final file = File(filePath);
       await file.writeAsString(_dataBuffer.map((row) => row.join(";")).join("\n"));
 
