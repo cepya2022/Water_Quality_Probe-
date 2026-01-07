@@ -19,9 +19,9 @@
 
 
      <application
-         android:label="Water Quality Probe"
+         android:label="SENSA"
          android:name="${applicationName}"
-         android:icon="@mipmap/ic_wqp_launcher">
+         android:icon="@mipmap/ic_sensa_launcher">
          <activity
              android:name=".MainActivity"
              android:exported="true"

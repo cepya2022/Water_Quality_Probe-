@@ -20,7 +20,7 @@ class SideMenu extends StatelessWidget {
       child: ListView(
         children: [
           DrawerHeader(
-            child: Image.asset("assets/images/Water_Quality_Probe.png"),
+            child: Image.asset("assets/images/bg-t_sensa.png"),
           ),
           // DrawerListTile(
           //   title: "Dashboard",
