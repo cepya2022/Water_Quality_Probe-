@@ -68,6 +68,38 @@ class _VisualizeScreenState extends State<VisualizeScreen> {
             itemCount: parametros.length,
             itemBuilder: (context, index) {
               final parametro = parametros[index];
+
+              final int nYLabels = 6; // change to 4 or 6 if you want
+              double minY = double.infinity;
+              double maxY = -double.infinity;
+
+              for (final row in filteredData) {
+                final raw = row[parametro];
+
+                if (raw == null) continue;
+
+                final double? y = raw is num
+                    ? raw.toDouble()
+                    : double.tryParse(raw.toString());
+
+                if (y == null) continue;
+
+                minY = math.min(minY, y);
+                maxY = math.max(maxY, y);
+              }
+
+              List<double> yTicks(int n, double minY, double maxY) {
+                if (n < 2) return [minY];
+
+                final step = (maxY - minY) / (n - 1);
+                return List.generate(n, (i) => minY + step * i);
+              }
+
+              final double yInterval = (maxY - minY) / (nYLabels - 1);
+
+              final yTickValues = yTicks(nYLabels, minY, maxY); // 4 or 6 also OK
+              final interval = (maxY - minY) / (yTickValues.length - 1);
+
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12.0),
                 child: Column(
@@ -78,42 +110,70 @@ class _VisualizeScreenState extends State<VisualizeScreen> {
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     SizedBox(height: 8),
-                    SizedBox(
+                    Container(
+                      // padding: const EdgeInsets.only(left: 16),
                       height: 200,
                       child: LineChart(
                         LineChartData(
+                          // minY: minY,
+                          // maxY: maxY,
                           lineBarsData: _generateLineBarsData(filteredData, parametro),
                           titlesData: FlTitlesData(
                             leftTitles: AxisTitles(
-                              sideTitles: SideTitles(showTitles: true),
+
+                              sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 30,
+                                  interval: interval,
+                                  getTitlesWidget: (value, meta) {
+
+                                    return SideTitleWidget(
+                                      axisSide: meta.axisSide,
+                                      space: 6,
+                                      child: Text(
+                                        value.toStringAsFixed(1),
+                                        style: const TextStyle(fontSize: 10),
+                                      ),
+                                    );
+                                  },
+                              ),
                             ),
                             bottomTitles: AxisTitles(
                               sideTitles: SideTitles(
                                 showTitles: true,
-                                reservedSize: 40,
+                                reservedSize: 60,
+                                interval: 1, // important for index-based axes
                                 getTitlesWidget: (value, meta) {
-                                  final index = value.toInt();
-                                  if (index >= 0 && index < filteredData.length) {
-                                    final dateStr = filteredData[index]['Fecha'];
+                                  final index = value.round();
 
-                                    if (!shownDates.contains(dateStr)) {
-                                      shownDates.add(dateStr);
-                                      try {
-                                        DateFormat('dd/MM/yyyy').parse(dateStr);
-                                        return Transform.rotate(
-                                          angle: -math.pi / 4,
-                                          alignment: Alignment(1.0, 0.0),
-                                          child: Text(
-                                            dateStr,
-                                            style: TextStyle(fontSize: 8),
-                                          ),
-                                        );
-                                      } catch (e) {
-                                        return Text('');
-                                      }
-                                    }
+                                  if (index < 0 || index >= filteredData.length) {
+                                    return const SizedBox.shrink();
                                   }
-                                  return Text('');
+
+                                  final maxLabels = 6;
+                                  final step = (filteredData.length / maxLabels)
+                                      .ceil()
+                                      .clamp(1, filteredData.length);
+
+                                  // Only show every Nth label
+                                  if (index % step != 0) {
+                                    return const SizedBox.shrink();
+                                  }
+
+                                  final dateStr = filteredData[index]['Fecha'];
+
+                                  return SideTitleWidget(
+                                    axisSide: meta.axisSide,
+                                    space: 8,
+                                    child: Transform.rotate(
+                                      angle: -math.pi / 4,
+                                      alignment: Alignment(1.0, 0.0),
+                                      child: Text(
+                                        dateStr,
+                                        style: const TextStyle(fontSize: 9),
+                                      ),
+                                    ),
+                                  );
                                 },
                               ),
                             ),
