@@ -30,6 +30,7 @@ class MyApp extends StatelessWidget {
         canvasColor: secondaryColor,
       ),
       home: ChatScreen(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
