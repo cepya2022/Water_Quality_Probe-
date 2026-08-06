@@ -52,6 +52,7 @@ char datosT = 'b'; // enviar datos
 char datosReloj = 'b'; // enviar datos
 char enviar = 'b'; // enviar datos
 char cambioEstado = 'b'; // registra cambios en la configuracion
+char consultarEstado = 'b'; // pide relectura/impresion del estado guardado en la SD
 float punto1, punto2 = 0; // calibración conductímetro
 float puntoStd = 12880; // calibración conductímetro
 String fecha = ""; // valor de la fecha y hora actual
@@ -811,8 +812,8 @@ void calibrarEC(){
       break;
     }
   }
+  char c = ' ';
   switch(datobt){
-    char c = ' ';
     case 'D': // para 1 punto
     Serial1.println("mandar valor de punto");
     punto1 = 0;
@@ -851,6 +852,7 @@ void calibrarEC(){
       delay(100);
       break;
     }
+    break;
     /*digitalWrite(bjtEC, HIGH);
     delay(1200);
     Serial2.begin(9600);
@@ -933,9 +935,10 @@ void calibrarEC(){
         delay(100);
         digitalWrite(bjtEC, LOW);
         Serial1.println("EC cal");
-        break;  
+        break;
       }
     }
+    break;
 
     case 'S':
     Serial1.println("calibrando con punto Std");
@@ -1236,11 +1239,13 @@ void interrupcionBT(){
     break;
 
     case 'b':
-    chequearEstado();
+    consultarEstado = 'a';
+    minutos = 0;
     break;
 
     case 'm':
-    guardarEstado();
+    cambioEstado = 'a';
+    minutos = 0;
     break;
   }
 }
@@ -1248,6 +1253,10 @@ void interrupcionBT(){
 void hacerAccion(){
   if (cambioEstado == 'a'){
     guardarEstado();
+  }
+  if (consultarEstado == 'a'){
+    chequearEstado();
+    consultarEstado = 'b';
   }
   if (medir == 'a'){
     hacerTodo();
