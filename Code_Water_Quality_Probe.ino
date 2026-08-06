@@ -10,15 +10,16 @@
 
 #define SensorTpin 5
 #define relepH 6
-#define bjtpH 7
-#define bjtOD 8
+#define bjtpH 57 // A3 o D57 son análogos
+#define bjtOD 55 // A1 o D55 son análogos
 #define releOD 9
 #define releEC 10
-#define bjtEC 11 
+#define bjtEC 15 
 #define releT 12
-#define bjtT 13
-#define bjtSD_RTC 49
-#define releSD_RTC 48
+#define bjtT 4
+#define bjt_RTC 22
+#define bjt_SD 48
+// #define releSD_RTC 48
 #define SSpin 53
 
 //float analogValBat, voltBat = 0;
@@ -32,6 +33,7 @@ char datobt;
 char ache = 'h';
 int minutos = 3; // frecuencia de medicion
 int minprev;  // variable auxiliar
+int contador = 0;
 char ODon = 'b'; // prendido/apagado del sensor
 char ECon = 'b'; // prendido/apagado del sensor
 char pHon = 'b'; // prendido/apagado del sensor
@@ -75,7 +77,7 @@ OneWire oneWireObjeto(SensorTpin);
 DallasTemperature sensorT(&oneWireObjeto); // para sensor DS18B20. Pasa referencia, no valor
 
 void setup() {  
-  //apagarPines();
+  apagarPines();
   delay(100);
   Serial1.begin(9600); //cambio a 9600 pq es un HC-06 (ORIGINAL 38400)
   delay(1000);
@@ -371,6 +373,7 @@ void mandarpH(){
 
 void mandarEC(){
   medirT();
+  //T = 28;
   medirEC();
   Serial1.print("EC = ");
   Serial1.println(EC);
@@ -402,10 +405,10 @@ void mandarReloj(){
   minutos = minprev;
   medir = onprev;
   datosReloj = 'b';
-  digitalWrite(bjtSD_RTC, LOW);
+  digitalWrite(bjt_RTC, LOW);
   delay(100);
-  digitalWrite(releSD_RTC, HIGH);
-  delay(100);
+//  digitalWrite(releSD_RTC, HIGH);
+//  delay(100);
 }
 
 /*void mandarBateria(){
@@ -457,10 +460,10 @@ void pegarDatosEnSD(){
     //digitalWrite(LedPin, HIGH);
   }
 
-  digitalWrite(bjtSD_RTC, LOW);
+  digitalWrite(bjt_SD, LOW);
   delay(100);
-  digitalWrite(releSD_RTC, HIGH);
-  delay(100);
+  //digitalWrite(releSD_RTC, HIGH);
+  //delay(100);
 
   Serial3.begin(9600); // Manda los datos al NodeMCU8266 para conexión WiFi
   delay(100);
@@ -486,9 +489,9 @@ void pegarDatosEnSD(){
 void chequearEstado(){
   Serial1.println("Voy a mirar los datos");
   delay(200);
-  digitalWrite(releSD_RTC, LOW);
-  delay(1000);
-  digitalWrite(bjtSD_RTC, HIGH);
+  //digitalWrite(releSD_RTC, LOW);
+  //delay(1000);
+  digitalWrite(bjt_SD, HIGH);
   delay(1000);
   if (SD.begin(SSpin)){ //tarjeta sd conectada al canals SS vía pin 4
     //Serial.println("memoria encontrada !");
@@ -513,9 +516,9 @@ void chequearEstado(){
     Serial1.println("No hay estado previo");
   }
   delay(100);
-  digitalWrite(bjtSD_RTC, LOW);
+  digitalWrite(bjt_SD, LOW);
   delay(100);
-  digitalWrite(releSD_RTC, HIGH);
+  //digitalWrite(releSD_RTC, HIGH);
 
   int posi = receivedString.indexOf(';');
       if (posi != -1) {
@@ -537,16 +540,25 @@ void chequearEstado(){
               String token4 = receivedString.substring(0, posi);
               receivedString = receivedString.substring(posi + 1);
             
-              pendiente = token1.toFloat();
-              ordenada = token2.toFloat();
-              medir = token3.charAt(0);
-              minutos = token4.toInt();
-              punto = receivedString;
-              if ((int)punto[0] == 0 && medir == 'b'){
-                titulo = 'b';
+              posi = receivedString.indexOf(';');
+              if (posi != -1) {
+                String token5 = receivedString.substring(0, posi);
+                receivedString = receivedString.substring(posi + 1);
+
+                pendiente = token1.toFloat();
+                ordenada = token2.toFloat();
+                medir = token3.charAt(0);
+                minutos = token4.toInt();
+                punto = token5;
+                contador = receivedString.toInt();
+                if (medir == 'b'){
+                  titulo = 'b';
+                }
+                else {
+                  titulo = 'a';
+                  contador += 1;
+                }
               }
-              else if ((int)punto[0] != 0 && medir == 'b'){titulo = 'b';}
-              else {titulo = 'a';}
             }
           }
         }
@@ -556,20 +568,20 @@ void chequearEstado(){
   Serial1.println(pendiente);
   Serial1.print("O.O. = ");
   Serial1.println(ordenada);
-  Serial1.print("medir: ");
+  Serial1.print("Medir: ");
   Serial1.println(medir);
-  Serial1.print("frecuencia (minutos): ");
+  Serial1.print("Frecuencia (minutos): ");
   Serial1.println(minutos/15);
-  Serial1.print("punto: ");
+  Serial1.print("Punto: ");
   Serial1.println(punto);
-  //Serial1.print("punto[0]: ");
-  //Serial1.println((int)punto[0]);
+  Serial1.print("Reinicios: ");
+  Serial1.println(contador);
 }
 
 void guardarEstado(){
-  digitalWrite(releSD_RTC, LOW);
+  //digitalWrite(releSD_RTC, LOW);
   delay(1000);
-  digitalWrite(bjtSD_RTC, HIGH);
+  digitalWrite(bjt_SD, HIGH);
   delay(1000);
 
   if (SD.begin(SSpin)){ //tarjeta sd conectada al canals SS vía pin 4
@@ -593,6 +605,8 @@ void guardarEstado(){
     estadoprev.print(minprev);
     estadoprev.print(";");
     estadoprev.print(punto);
+    estadoprev.print(";");
+    estadoprev.print(contador);
     delay(100);
     estadoprev.close();
     delay(100);
@@ -602,9 +616,9 @@ void guardarEstado(){
     Serial1.println("Cambios no guardados");
   }
 
-  digitalWrite(bjtSD_RTC, LOW);
+  digitalWrite(bjt_SD, LOW);
   delay(100);
-  digitalWrite(releSD_RTC, HIGH);
+  //digitalWrite(releSD_RTC, HIGH);
   delay(100);
 
   cambioEstado = 'b';
@@ -612,38 +626,40 @@ void guardarEstado(){
 }
 
 void mandarDatos(){
-  digitalWrite(releSD_RTC, LOW);
+  //digitalWrite(releSD_RTC, LOW);
   delay(1000);
-  digitalWrite(bjtSD_RTC, HIGH);
+  digitalWrite(bjt_SD, HIGH);
   delay(1000);
   if (SD.begin(SSpin)){ //tarjeta sd conectada al canals SS vía pin 4
     //Serial.println("memoria encontrada !");
   }else{
-    Serial1.println("memoria no encontrada !");
+    Serial1.println("Memoria no encontrada!");
   }
   datos = SD.open("mega.txt");
   if (datos){
     //Serial.println("abrio el archivo");
     datos.seek(pos);
     while (datos.available()){
+    //while (pos<10){
       Serial1.write(datos.read());
       pos++;
     }
     datos.close();
+    Serial1.println("Datos enviados.");
   }
   else{
     //digitalWrite(LedPin, HIGH);
     //Serial1.println("no pudo abrir el archivo");
     //digitalWrite(13, HIGH);
-    Serial1.println("no abrio el archivo");  
+    Serial1.println("No abrio el archivo");  
   }
   minutos = minprev;
   medir = onprev;
   enviar = 'b';
   delay(100);
-  digitalWrite(bjtSD_RTC, LOW);
+  digitalWrite(bjt_SD, LOW);
   delay(100);
-  digitalWrite(releSD_RTC, HIGH);
+  //digitalWrite(releSD_RTC, HIGH);
   delay(100);
 }
 
@@ -656,33 +672,34 @@ void eliminarArchivo(){
   }
   switch (e){
     case 'k':
-    digitalWrite(bjtSD_RTC, HIGH);
+    digitalWrite(bjt_SD, HIGH);
     delay(100);
-    digitalWrite(releSD_RTC, LOW);
+    //digitalWrite(releSD_RTC, LOW);
     delay(100);
     if (SD.begin(SSpin)){
       if (SD.exists("mega.txt")){
        SD.remove("mega.txt");
-       Serial1.println("archivo eliminado");
+       Serial1.println("Archivo eliminado");
       }else{
-        Serial1.println("el archivo no existe");
+        Serial1.println("El archivo no existe");
         //digitalWrite(13, HIGH);
      }
     }else{
-     Serial1.println("no pudo eliminar el archivo");
+     Serial1.println("No pudo eliminar el archivo");
       //digitalWrite(13, HIGH);
     }
     delay(100);
-    digitalWrite(bjtSD_RTC, LOW);
+    digitalWrite(bjt_SD, LOW);
     delay(100);
-    digitalWrite(releSD_RTC, HIGH);
+    //digitalWrite(releSD_RTC, HIGH);
     minutos = minprev;
     medir = onprev;
     eliminar = 'b';
     break;
 
     case 'a':
-    Serial1.println("aaasa te asustaste");
+    //Serial1.println("aaasa te asustaste");
+    Serial1.println("Cancelado");
     break;
   }
   /*digitalWrite(bjtSD_RTC, HIGH);
@@ -707,9 +724,9 @@ void eliminarArchivo(){
 }
 
 void obtenerFecha(){
-  digitalWrite(releSD_RTC, LOW);
+  //digitalWrite(releSD_RTC, LOW);
   delay(100);
-  digitalWrite(bjtSD_RTC, HIGH);
+  digitalWrite(bjt_RTC, HIGH);
   delay(100);
   if (rtc.begin()){
     dt = rtc.now();
@@ -723,9 +740,9 @@ void obtenerFecha(){
 }
 
 void corregirReloj(){
-  digitalWrite(releSD_RTC, LOW);
+  //digitalWrite(releSD_RTC, LOW);
   delay(100);
-  digitalWrite(bjtSD_RTC, HIGH);
+  digitalWrite(bjt_RTC, HIGH);
   delay(100);
   if (rtc.begin()){
     Serial.println("reloj bien");
@@ -736,9 +753,9 @@ void corregirReloj(){
   obtenerFecha();
   Serial.print(fecha);
   delay(100);
-  digitalWrite(bjtSD_RTC, LOW);
+  digitalWrite(bjt_RTC, LOW);
   delay(100);
-  digitalWrite(releSD_RTC, HIGH);
+  //digitalWrite(releSD_RTC, HIGH);
 }
   
 void medirEC(){
@@ -784,7 +801,7 @@ void medirEC(){
 
 void calibrarEC(){
   delay(100);
-  Serial1.println("por ahora seria OK para 2 puntos y EC 1 pto para 1");
+  Serial1.println("Enviar 'OK' para 2 puntos o 'EC 1 pto' para 1");
   delay(100);
   while(datobt != 'k'){ // esto lo podria cambiar, y poner simplemente en vez de datobt, un char nuevo vacio y que el while sea mientras siga valiendo '', y cuando recibe algo sale
     if (Serial1.available()){
@@ -1286,8 +1303,10 @@ void setearPines(){
   digitalWrite(bjtEC, LOW);
   pinMode(bjtOD, OUTPUT);
   digitalWrite(bjtOD, LOW);
-  pinMode(bjtSD_RTC, OUTPUT);
-  digitalWrite(bjtSD_RTC, LOW);
+  pinMode(bjt_RTC, OUTPUT);
+  digitalWrite(bjt_RTC, LOW);
+  pinMode(bjt_SD, OUTPUT);
+  digitalWrite(bjt_SD, LOW);
   pinMode(releOD, OUTPUT);
   digitalWrite(releOD, LOW); 
   pinMode(relepH, OUTPUT);
@@ -1296,8 +1315,8 @@ void setearPines(){
   digitalWrite(releEC, LOW);
   pinMode(releT, OUTPUT);
   digitalWrite(releT, LOW);
-  pinMode(releSD_RTC, OUTPUT);
-  digitalWrite(releSD_RTC, HIGH);
+//  pinMode(releSD_RTC, OUTPUT);
+//  digitalWrite(releSD_RTC, LOW);
 }
 
 void apagarPines(){
@@ -1334,14 +1353,14 @@ void apagarPines(){
   digitalWrite(A13, LOW);
   digitalWrite(A14, LOW);
   digitalWrite(A15, LOW);
-  for (int i = 0; i <= 53; i++) {
-    if (i == 4 || i == 5 || i == 6 || i == 7 || i == 8 || i == 9 || i == 10 || i == 11 || i == 12 || i == 13 || i == 14 || i == 15 || i == 16 || i == 17 || i == 18 || i == 19 || i == 20 || i == 21 || i == 48 || i == 49 || i == 50 || i == 51 || i == 52 || i == 53){
+  /*for (int i = 0; i <= 53; i++) {
+    if (i == 4 || i == 5 || i == 6 || i == 7 || i == 8 || i == 9 || i == 10 || i == 11 || i == 12 || i == 14 || i == 15 || i == 16 || i == 17 || i == 18 || i == 19 || i == 20 || i == 22 || i == 48 || i == 49 || i == 50 || i == 51 || i == 52 || i == 53|| i == 55 || i == 57){
       
     }else{
       pinMode(i, OUTPUT);
       digitalWrite(i, LOW);
     }
-  }
+  }*/
 }
 
 /*void probarMemoria(){
