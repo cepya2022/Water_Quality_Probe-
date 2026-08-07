@@ -24,7 +24,6 @@
 
 const unsigned long TIMEOUT_BT_MS = 300000UL; // 5 min de espera max por datos via BT antes de cancelar
 
-//float analogValBat, voltBat = 0;
 float volt, volt4, volt7; // medición y calibración de pH
 float pendiente = -4.040; // nueva calibracion con boya 2.0
 float ordenada = 22.600; // nueva calibracion con boya 2.0
@@ -40,7 +39,6 @@ char ODon = 'b'; // prendido/apagado del sensor
 char ECon = 'b'; // prendido/apagado del sensor
 char pHon = 'b'; // prendido/apagado del sensor
 char Ton = 'b'; // prendido/apagado del sensor
-char bateria = 'b';
 char eliminar = 'b'; // eliminar datos de la SD
 char medir = 'b';
 char onprev = 'b';  // variable auxiliar
@@ -493,17 +491,7 @@ void mandarReloj(){
 //  delay(100);
 }
 
-/*void mandarBateria(){
-  analogValBat = analogRead(A3);
-  voltBat = 5.00 * analogValBat / 1024.00; // Calculamos el voltBat. Es una simple regla de 3. Si 5V es 1024, con dividir 5 entre 1024 y multiplicarlo por el valor que nos da el pin analógico, ya tenemos el voltBat. Así de sencillo
-  Serial1.print("voltBat: ");
-  Serial1.println(voltBat);  
-  minutos = minprev;
-  medir = onprev;
-  datosBateria = 'b';
-}*/
-
-void pegarDatosEnSD(){  
+void pegarDatosEnSD(){
   //digitalWrite(bjtSD_RTC, HIGH);
   //delay(100);
   if (SD.begin(SSpin)){ //tarjeta sd conectada al canals SS vía pin 4
@@ -530,10 +518,6 @@ void pegarDatosEnSD(){
     datos.print(T);
     datos.print(";");
     datos.println(punto);
-    //datos.print(";");
-    //analogValBat = analogRead(A3);
-    //voltBat = 4.04 * analogValBat / 1024.00;
-    //datos.println(voltBat);
     datos.close();
   }else{
     //digitalWrite(13, HIGH);
@@ -1274,13 +1258,6 @@ void interrupcionBT(){
     minutos = 0;
     break;
 
-    /*case '%': 
-    analogValBat = analogRead(A3);
-    voltBat = 4.04 * analogValBat / 1024.00; // Calculamos el voltBat. Es una simple regla de 3. Si 5V es 1024, con dividir 5 entre 1024 y multiplicarlo por el valor que nos da el pin analógico, ya tenemos el voltBat. Así de sencillo
-    Serial1.print("voltBat: ");
-    Serial1.println(voltBat);    
-    break;*/
-
     case '#': // dejar prendido EC
     ECon = 'a';
     Serial1.println("mantener EC on");
@@ -1412,9 +1389,6 @@ void hacerAccion(){
     setearPines();
     apagar = 'b';
   }
-  /*if (bateria == 'a'){
-    mandarBateria();
-  }*/
 }
 
 void setearPines(){
