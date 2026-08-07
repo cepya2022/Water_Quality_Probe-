@@ -1194,12 +1194,11 @@ void interrupcionBT(){
     medir = 'b';
     titulo = 'b';
     //punto = "";
-    minprev = 0;
+    minprev = 441; // dormir profundo (30 min) mientras la medicion esta apagada; el BT despierta igual por interrupcion
     minutos = 0;
     Serial1.println("apagando...");
     cambioEstado = 'a';
     //guardarEstado();
-    delay(200);
     //Serial1.println("off");
     break;
 
