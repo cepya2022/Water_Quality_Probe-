@@ -22,6 +22,8 @@
 // #define releSD_RTC 48
 #define SSpin 53
 
+const unsigned long TIMEOUT_BT_MS = 300000UL; // 5 min de espera max por datos via BT antes de cancelar
+
 //float analogValBat, voltBat = 0;
 float volt, volt4, volt7; // medición y calibración de pH
 float pendiente = -4.040; // nueva calibracion con boya 2.0
@@ -37,6 +39,7 @@ int contador = 0;
 char ODon = 'b'; // prendido/apagado del sensor
 char ECon = 'b'; // prendido/apagado del sensor
 char pHon = 'b'; // prendido/apagado del sensor
+char Ton = 'b'; // prendido/apagado del sensor
 char bateria = 'b';
 char eliminar = 'b'; // eliminar datos de la SD
 char medir = 'b';
@@ -102,15 +105,23 @@ void loop() {
   hacerAccion();
 }
 
-void guardarPunto(){
+bool guardarPunto(){
   Serial1.flush();
   Serial1.println("Escribir punto de mediciones:");
   delay(300);
   punto = "";
   delay(200);
+  unsigned long t0 = millis();
   while (punto == "" || (int)punto[0] == 10){
     if (Serial1.available()){
       punto = Serial1.readStringUntil('\r');
+    }
+    if (millis() - t0 > TIMEOUT_BT_MS){
+      Serial1.println("Tiempo de espera agotado, cancelando");
+      medir = 'b';
+      titulo = 'b';
+      cambioEstado = 'a';
+      return false;
     }
   }
   //delay(100);
@@ -120,10 +131,18 @@ void guardarPunto(){
   Serial1.println("Indique frecuencia de medición:");
   frecuencia = "";
   //while (frecuencia[0] != 'n' || frecuencia[0] != 'h' || frecuencia[0] != 'q' || frecuencia[0] != 't' || frecuencia[0] != 'o'){
+  t0 = millis();
   while (frecuencia == ""){
     //frecuencia = "";
     if (Serial1.available()){
       frecuencia = Serial1.readStringUntil('\r');
+    }
+    if (millis() - t0 > TIMEOUT_BT_MS){
+      Serial1.println("Tiempo de espera agotado, cancelando");
+      medir = 'b';
+      titulo = 'b';
+      cambioEstado = 'a';
+      return false;
     }
   }
   delay(100);
@@ -143,11 +162,14 @@ void guardarPunto(){
   //Serial1.println("a medir");
   titulo = 'a';
   delay(100);
+  return true;
 }
 
 void hacerTodo(){
   if (titulo == 'b'){
-    guardarPunto();
+    if (!guardarPunto()){
+      return;
+    }
   }
   delay(500);
   Serial1.println("a medir");
@@ -205,31 +227,53 @@ void medirT(){
   sensorT.begin();
   sensorT.requestTemperatures();
   T = sensorT.getTempCByIndex(0);
-  //if (T == -127){
-    //digitalWrite(LedPin, HIGH);
-    //BLT.print("midio mal el sensor de T");
-  //}
+  if (T == -127){
+    Serial1.println("Error: sensor de T desconectado o fallo de lectura");
+  }
   delay(100);
-  digitalWrite(bjtT, LOW);
-  digitalWrite(releT, LOW);
+  if (Ton == 'b'){
+    digitalWrite(bjtT, LOW);
+    digitalWrite(releT, LOW);
+  }
 }
 
 void setearRectapH(){
+  float pendienteAnterior = pendiente;
+  float ordenadaAnterior = ordenada;
   Serial1.println("mandar valor de pendiente");
   pendiente = 0;
   delay(100);
+  unsigned long t0pH = millis();
   while (pendiente == 0){
     if (Serial1.available()){
       pendiente = Serial1.parseFloat();
+    }
+    if (millis() - t0pH > TIMEOUT_BT_MS){
+      Serial1.println("Tiempo de espera agotado, cancelando");
+      pendiente = pendienteAnterior;
+      ordenada = ordenadaAnterior;
+      minutos = minprev;
+      medir = onprev;
+      rectapH = 'b';
+      return;
     }
   }
   delay(100);
   Serial1.println("mandar valor de ordenada");
   ordenada = 0;
   delay(100);
+  t0pH = millis();
   while (ordenada == 0){
     if (Serial1.available()){
       ordenada = Serial1.parseFloat();
+    }
+    if (millis() - t0pH > TIMEOUT_BT_MS){
+      Serial1.println("Tiempo de espera agotado, cancelando");
+      ordenada = ordenadaAnterior;
+      minutos = minprev;
+      medir = onprev;
+      rectapH = 'b';
+      return;
     }
   }
   delay(100);
@@ -251,9 +295,11 @@ void calibrarPeachimetro(){
   Serial1.println("poner sonda en sn standard 7 y apretar una vez boton OK");
   delay(100);
   Serial1.println("recomendacion: esperar 3 min a que equilibre");
+  unsigned long t0 = millis();
   while(datobt != 'k'){
     if (Serial1.available()){
       datobt = Serial1.read();
+      t0 = millis();
     }
     if (datobt == 'a'){
       break;
@@ -261,21 +307,33 @@ void calibrarPeachimetro(){
     if (datobt == 'P'){
       mandarpH();
     }
+    if (millis() - t0 > TIMEOUT_BT_MS){
+      Serial1.println("Tiempo de espera agotado, cancelando");
+      datobt = 'a';
+      break;
+    }
   }
   switch(datobt){
     case 'k':
     medirpH(7);
     datobt = ' ';
     Serial1.println("poner sonda en sn standrad 4 y apretar una vez boton OK");
+    t0 = millis();
     while(datobt != 'k'){ // cambiar aca por datobt?
       if (Serial1.available()){
         datobt = Serial1.read();
+        t0 = millis();
       }
       if (datobt == 'a'){
         break;
       }
       if (datobt == 'P'){
         mandarpH();
+      }
+      if (millis() - t0 > TIMEOUT_BT_MS){
+        Serial1.println("Tiempo de espera agotado, cancelando");
+        datobt = 'a';
+        break;
       }
     }
     switch (datobt){
@@ -346,11 +404,19 @@ void medirpH(int p){
 }
 
 void mandarOD(){
+  char ODonAnterior = ODon;
+  ODon = 'a'; // mantener encendido durante las 10 lecturas, evitar ciclar el rele
   for (int i = 0 ; i < 10 ; i++){
     medirOD();
     Serial1.print("OD = ");
-    Serial1.println(OD); 
+    Serial1.println(OD);
     delay(100);
+  }
+  ODon = ODonAnterior;
+  if (ODon == 'b'){
+    digitalWrite(bjtOD, LOW);
+    delay(100);
+    digitalWrite(releOD, LOW);
   }
   minutos = minprev;
   medir = onprev;
@@ -359,6 +425,8 @@ void mandarOD(){
 }
 
 void mandarpH(){
+  char pHonAnterior = pHon;
+  pHon = 'a'; // mantener encendido durante las 10 lecturas, evitar ciclar el rele
   for (int i = 0 ; i < 10 ; i++){
     medirpH(0);
     Serial1.print("pH = ");
@@ -366,7 +434,13 @@ void mandarpH(){
     Serial1.print("volt = ");
     Serial1.println(volt);
     delay(100);
-  }  
+  }
+  pHon = pHonAnterior;
+  if (pHon == 'b'){
+    digitalWrite(bjtpH, LOW);
+    delay(100);
+    digitalWrite(relepH, LOW);
+  }
   minutos = minprev;
   medir = onprev;
   datospH = 'b';
@@ -388,12 +462,19 @@ void mandarEC(){
 }
 
 void mandarT(){
+  char TonAnterior = Ton;
+  Ton = 'a'; // mantener encendido durante las 10 lecturas, evitar ciclar el rele
   for (int i = 0 ; i < 10 ; i++){
     medirT();
     Serial1.print("T = ");
     Serial1.println(T);
     delay(100);
-  }  
+  }
+  Ton = TonAnterior;
+  if (Ton == 'b'){
+    digitalWrite(bjtT, LOW);
+    digitalWrite(releT, LOW);
+  }
   minutos = minprev;
   medir = onprev;
   datosT = 'b';
@@ -787,8 +868,10 @@ void medirEC(){
   delay(1200);
   sensorstring = Serial2.readStringUntil(13);
   sensorstring.toCharArray(sensorstring_array, 30);   //convert the string to a char array
-  EC = strtok(sensorstring_array, ",");               //let's pars the array at each comma
-  TDS = strtok(NULL, ",");
+  char* tokEC = strtok(sensorstring_array, ",");      //let's pars the array at each comma
+  char* tokTDS = strtok(NULL, ",");
+  EC = (tokEC != NULL) ? String(tokEC) : "";          // respuesta inesperada del sensor: no sobreescribir con basura
+  TDS = (tokTDS != NULL) ? String(tokTDS) : "";
   delay(100);
   Serial2.end();
   if (ECon == 'b'){
@@ -804,11 +887,18 @@ void calibrarEC(){
   delay(100);
   Serial1.println("Enviar 'OK' para 2 puntos o 'EC 1 pto' para 1");
   delay(100);
+  unsigned long t0EC = millis();
   while(datobt != 'k'){ // esto lo podria cambiar, y poner simplemente en vez de datobt, un char nuevo vacio y que el while sea mientras siga valiendo '', y cuando recibe algo sale
     if (Serial1.available()){
       datobt = Serial1.read(); // ver si aca puede recibir una palabra
+      t0EC = millis();
     }
     if (datobt == 'a' || datobt == 'S' || datobt == 'D'){
+      break;
+    }
+    if (millis() - t0EC > TIMEOUT_BT_MS){
+      Serial1.println("Tiempo de espera agotado, cancelando");
+      datobt = 'a';
       break;
     }
   }
@@ -818,6 +908,7 @@ void calibrarEC(){
     Serial1.println("mandar valor de punto");
     punto1 = 0;
     delay(100);
+    t0EC = millis();
     while (punto1 == 0){
       if (Serial1.available()){
         punto1 = Serial1.parseFloat();
@@ -825,6 +916,11 @@ void calibrarEC(){
         if (c == 'a'){
           break;
         }
+      }
+      if (millis() - t0EC > TIMEOUT_BT_MS){
+        Serial1.println("Tiempo de espera agotado, cancelando");
+        c = 'a';
+        break;
       }
     }
     switch (c){
@@ -872,6 +968,7 @@ void calibrarEC(){
     Serial1.println("mandar valor de 1er punto (menor)");
     punto1 = 0;
     delay(100);
+    t0EC = millis();
     while (punto1 == 0){
       if (Serial1.available()){
         punto1 = Serial1.parseFloat();
@@ -880,12 +977,17 @@ void calibrarEC(){
           break;
         }
       }
+      if (millis() - t0EC > TIMEOUT_BT_MS){
+        Serial1.println("Tiempo de espera agotado, cancelando");
+        c = 'a';
+        break;
+      }
     }
     switch (c){
       case 'a':
       Serial1.println("de baja la calibracion");
       break;
-      
+
       default:
       digitalWrite(releEC, HIGH);
       delay(100);
@@ -904,12 +1006,18 @@ void calibrarEC(){
       Serial1.println("mandar valor de 2do punto (mayor)");
       punto2 = 0;
       delay(100);
+      t0EC = millis();
       while (punto2 == 0){
         if (Serial1.available()){
           punto2 = Serial1.parseFloat();
         }
         c = Serial1.read(); // ver si funciona esto para dar de baja la calibracion del EC en el medio
         if (c == 'a'){
+          break;
+        }
+        if (millis() - t0EC > TIMEOUT_BT_MS){
+          Serial1.println("Tiempo de espera agotado, cancelando");
+          c = 'a';
           break;
         }
       }
@@ -977,16 +1085,23 @@ void calibrarOD(){
     //Serial.println("Loaded EEPROM");
   }
   Serial1.println("sn sat 100 y OK");
+  unsigned long t0OD = millis();
   while(datobt != 'k'){
     if (Serial1.available()){
       datobt = Serial1.read();
+      t0OD = millis();
       //Serial1.println(DO.read_do_percentage()); --> se manda solo cuando apreto algo, raro. Y no se si me deja cancelar
     }
     if (datobt == 'a'){
       break;
     }
+    if (millis() - t0OD > TIMEOUT_BT_MS){
+      Serial1.println("Tiempo de espera agotado, cancelando");
+      datobt = 'a';
+      break;
+    }
     //Serial1.println(DO.read_do_percentage()); --> aca se manda perfecto siempre pero tarda mucho en cancelar (dar ok no probe)
-  }  
+  }
   switch(datobt){
     case 'k':
     DO.cal();
