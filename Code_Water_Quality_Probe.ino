@@ -1,6 +1,5 @@
 #include <RTClib.h>
 #include <LowPower.h>
-#include <SoftwareSerial.h>
 #include <DallasTemperature.h>
 #include <OneWire.h>
 #include <Wire.h>
@@ -8,18 +7,15 @@
 #include <SD.h>
 #include "do_grav.h"
 
+// Control de alimentacion: MOSFETs 2N7000 en low-side sobre el GND de cada modulo.
+// Gate en HIGH -> conduce -> modulo alimentado. La placa V1.0 no lleva reles.
 #define SensorTpin 5
-#define relepH 6
 #define bjtpH 57 // A3 o D57 son análogos
 #define bjtOD 55 // A1 o D55 son análogos
-#define releOD 9
-#define releEC 10
-#define bjtEC 15 
-#define releT 12
+#define bjtEC 15
 #define bjtT 4
 #define bjt_RTC 22
 #define bjt_SD 48
-// #define releSD_RTC 48
 #define SSpin 53
 
 const unsigned long TIMEOUT_BT_MS = 300000UL; // 5 min de espera max por datos via BT antes de cancelar
@@ -30,9 +26,11 @@ float ordenada = 22.600; // nueva calibracion con boya 2.0
 unsigned long int avgval;
 //int buffer_arr[10], temp;
 float pH, T, OD; // guardan el valor de las variables FQ
-char datobt;
-char ache = 'h';
-int minutos = 3; // frecuencia de medicion
+// Variables escritas desde la interrupcion de BT y leidas en loop()/hacerAccion().
+// Deben ser volatile para que el compilador no las cachee en registros: minutos es
+// la via de escape del for de sueño y datobt corta los while de calibracion.
+volatile char datobt;
+volatile int minutos = 3; // frecuencia de medicion
 int minprev;  // variable auxiliar
 int contador = 0;
 char ODon = 'b'; // prendido/apagado del sensor
@@ -40,7 +38,7 @@ char ECon = 'b'; // prendido/apagado del sensor
 char pHon = 'b'; // prendido/apagado del sensor
 char Ton = 'b'; // prendido/apagado del sensor
 char eliminar = 'b'; // eliminar datos de la SD
-char medir = 'b';
+volatile char medir = 'b';
 char onprev = 'b';  // variable auxiliar
 char calEC = 'b';  // calibración conductímetro
 char calOD = 'b'; // calibración oxímetro
@@ -52,7 +50,7 @@ char datospH = 'b'; // enviar datos
 char datosT = 'b'; // enviar datos
 char datosReloj = 'b'; // enviar datos
 char enviar = 'b'; // enviar datos
-char cambioEstado = 'b'; // registra cambios en la configuracion
+volatile char cambioEstado = 'b'; // registra cambios en la configuracion
 char consultarEstado = 'b'; // pide relectura/impresion del estado guardado en la SD
 float punto1, punto2 = 0; // calibración conductímetro
 float puntoStd = 12880; // calibración conductímetro
@@ -68,7 +66,6 @@ String receivedString = ""; // variable auxiliar
 String EC = "";                             //a string to hold the data from the Atlas Scientific product
 String TDS = "";
 String sensorstring = "";                             //a string to hold the data from the Atlas Scientific product
-boolean sensor_string_complete = false;               //have we received all the data from the Atlas Scientific product
 
 Gravity_DO DO = Gravity_DO(A0);
 File datos;
@@ -105,7 +102,7 @@ void loop() {
 
 bool guardarPunto(){
   Serial1.flush();
-  Serial1.println("Escribir punto de mediciones:");
+  Serial1.println(F("Escribir punto de mediciones:"));
   delay(300);
   punto = "";
   delay(200);
@@ -115,7 +112,7 @@ bool guardarPunto(){
       punto = Serial1.readStringUntil('\r');
     }
     if (millis() - t0 > TIMEOUT_BT_MS){
-      Serial1.println("Tiempo de espera agotado, cancelando");
+      Serial1.println(F("Tiempo de espera agotado, cancelando"));
       medir = 'b';
       titulo = 'b';
       cambioEstado = 'a';
@@ -123,10 +120,10 @@ bool guardarPunto(){
     }
   }
   //delay(100);
-  Serial1.print("Nuevo punto: ");
+  Serial1.print(F("Nuevo punto: "));
   Serial1.println(punto);
   delay(500);
-  Serial1.println("Indique frecuencia de medición:");
+  Serial1.println(F("Indique frecuencia de medición:"));
   frecuencia = "";
   //while (frecuencia[0] != 'n' || frecuencia[0] != 'h' || frecuencia[0] != 'q' || frecuencia[0] != 't' || frecuencia[0] != 'o'){
   t0 = millis();
@@ -136,7 +133,7 @@ bool guardarPunto(){
       frecuencia = Serial1.readStringUntil('\r');
     }
     if (millis() - t0 > TIMEOUT_BT_MS){
-      Serial1.println("Tiempo de espera agotado, cancelando");
+      Serial1.println(F("Tiempo de espera agotado, cancelando"));
       medir = 'b';
       titulo = 'b';
       cambioEstado = 'a';
@@ -150,14 +147,14 @@ bool guardarPunto(){
   else if (frecuencia[0] == 'o'){minprev = 14;}
   else {minprev = 441;}
   delay(300);
-  //Serial1.print("punto guardado: ");
+  //Serial1.print(F("punto guardado: "));
   //Serial1.println(punto);
-  Serial1.print("frecuencia de medición: ");
+  Serial1.print(F("frecuencia de medición: "));
   Serial1.println(minprev/15);
   delay(200);
   guardarEstado();
   delay(100);
-  //Serial1.println("a medir");
+  //Serial1.println(F("a medir"));
   titulo = 'a';
   delay(100);
   return true;
@@ -170,7 +167,7 @@ void hacerTodo(){
     }
   }
   delay(500);
-  Serial1.println("a medir");
+  Serial1.println(F("a medir"));
   delay(100);
   medirpH(0);
   delay(100);
@@ -189,56 +186,49 @@ void hacerTodo(){
 
 /*void mostrarDatosEnSerial(){
   Serial.print(fecha);
-  Serial.print(";");
+  Serial.print(';');
   Serial.print(OD);
-  Serial.print(";");
+  Serial.print(';');
   Serial.print(EC);
-  Serial.print(";");
+  Serial.print(';');
   Serial.print(pH);
-  Serial.print(";");
+  Serial.print(';');
   Serial.print(T);
-  Serial.print(";");
+  Serial.print(';');
   Serial.println(punto);
 }*/
 
 void medirOD(){
   digitalWrite(bjtOD, HIGH);
   delay(100);
-  digitalWrite(releOD, HIGH);
-  delay(100);
   if(DO.begin()){
-    //Serial.println("Loaded EEPROM");
+    //Serial.println(F("Loaded EEPROM"));
   }
   OD = DO.read_do_percentage(); 
   if (ODon == 'b'){
     digitalWrite(bjtOD, LOW);  
-    delay(100);
-    digitalWrite(releOD, LOW);  
   }
 }
 
 void medirT(){
-  digitalWrite(releT, HIGH);
-  delay(100);
   digitalWrite(bjtT, HIGH);
   delay(100);
   sensorT.begin();
   sensorT.requestTemperatures();
   T = sensorT.getTempCByIndex(0);
   if (T == -127){
-    Serial1.println("Error: sensor de T desconectado o fallo de lectura");
+    Serial1.println(F("Error: sensor de T desconectado o fallo de lectura"));
   }
   delay(100);
   if (Ton == 'b'){
     digitalWrite(bjtT, LOW);
-    digitalWrite(releT, LOW);
   }
 }
 
 void setearRectapH(){
   float pendienteAnterior = pendiente;
   float ordenadaAnterior = ordenada;
-  Serial1.println("mandar valor de pendiente");
+  Serial1.println(F("mandar valor de pendiente"));
   pendiente = 0;
   delay(100);
   unsigned long t0pH = millis();
@@ -247,7 +237,7 @@ void setearRectapH(){
       pendiente = Serial1.parseFloat();
     }
     if (millis() - t0pH > TIMEOUT_BT_MS){
-      Serial1.println("Tiempo de espera agotado, cancelando");
+      Serial1.println(F("Tiempo de espera agotado, cancelando"));
       pendiente = pendienteAnterior;
       ordenada = ordenadaAnterior;
       minutos = minprev;
@@ -257,7 +247,7 @@ void setearRectapH(){
     }
   }
   delay(100);
-  Serial1.println("mandar valor de ordenada");
+  Serial1.println(F("mandar valor de ordenada"));
   ordenada = 0;
   delay(100);
   t0pH = millis();
@@ -266,7 +256,7 @@ void setearRectapH(){
       ordenada = Serial1.parseFloat();
     }
     if (millis() - t0pH > TIMEOUT_BT_MS){
-      Serial1.println("Tiempo de espera agotado, cancelando");
+      Serial1.println(F("Tiempo de espera agotado, cancelando"));
       ordenada = ordenadaAnterior;
       minutos = minprev;
       medir = onprev;
@@ -275,7 +265,7 @@ void setearRectapH(){
     }
   }
   delay(100);
-  Serial1.println("recta de calibracion de pH seteada");
+  Serial1.println(F("recta de calibracion de pH seteada"));
   minutos = minprev;
   medir = onprev;
   rectapH = 'b';
@@ -287,12 +277,10 @@ void setearRectapH(){
 void calibrarPeachimetro(){
   digitalWrite(bjtpH, HIGH);
   delay(100);
-  digitalWrite(relepH, HIGH);
-  delay(100);
   datobt = ' ';
-  Serial1.println("poner sonda en sn standard 7 y apretar una vez boton OK");
+  Serial1.println(F("poner sonda en sn standard 7 y apretar una vez boton OK"));
   delay(100);
-  Serial1.println("recomendacion: esperar 3 min a que equilibre");
+  Serial1.println(F("recomendacion: esperar 3 min a que equilibre"));
   unsigned long t0 = millis();
   while(datobt != 'k'){
     if (Serial1.available()){
@@ -306,7 +294,7 @@ void calibrarPeachimetro(){
       mandarpH();
     }
     if (millis() - t0 > TIMEOUT_BT_MS){
-      Serial1.println("Tiempo de espera agotado, cancelando");
+      Serial1.println(F("Tiempo de espera agotado, cancelando"));
       datobt = 'a';
       break;
     }
@@ -315,7 +303,7 @@ void calibrarPeachimetro(){
     case 'k':
     medirpH(7);
     datobt = ' ';
-    Serial1.println("poner sonda en sn standrad 4 y apretar una vez boton OK");
+    Serial1.println(F("poner sonda en sn standrad 4 y apretar una vez boton OK"));
     t0 = millis();
     while(datobt != 'k'){ // cambiar aca por datobt?
       if (Serial1.available()){
@@ -329,7 +317,7 @@ void calibrarPeachimetro(){
         mandarpH();
       }
       if (millis() - t0 > TIMEOUT_BT_MS){
-        Serial1.println("Tiempo de espera agotado, cancelando");
+        Serial1.println(F("Tiempo de espera agotado, cancelando"));
         datobt = 'a';
         break;
       }
@@ -337,17 +325,17 @@ void calibrarPeachimetro(){
     switch (datobt){
       case 'k':
       medirpH(4);
-      Serial1.println("pH-metro calibrado");
+      Serial1.println(F("pH-metro calibrado"));
       break;      
     
       case 'a':
-      Serial1.println("de baja la calibracion");
+      Serial1.println(F("de baja la calibracion"));
       break;
     }
     break;
     
     case 'a':
-    Serial1.println("de baja la calibracion");
+    Serial1.println(F("de baja la calibracion"));
     break;
   }
   minutos = minprev;
@@ -356,16 +344,12 @@ void calibrarPeachimetro(){
   datospH = 'b';
   delay(100);
   digitalWrite(bjtpH, LOW);
-  delay(100);
-  digitalWrite(relepH, LOW);
 
   guardarEstado();
   delay(200);
 }
 
 void medirpH(int p){
-  digitalWrite(relepH, HIGH);
-  delay(100);
   digitalWrite(bjtpH, HIGH);
   for (int i = 0; i < 2; i++){ // para que este 3 sec hasta medir
     delay(1000);    
@@ -384,8 +368,6 @@ void medirpH(int p){
     delay(100);
     if (pHon == 'b'){
       digitalWrite(bjtpH, LOW);
-      delay(100);
-      digitalWrite(relepH, LOW);
     }
     break;
     
@@ -406,15 +388,13 @@ void mandarOD(){
   ODon = 'a'; // mantener encendido durante las 10 lecturas, evitar ciclar el rele
   for (int i = 0 ; i < 10 ; i++){
     medirOD();
-    Serial1.print("OD = ");
+    Serial1.print(F("OD = "));
     Serial1.println(OD);
     delay(100);
   }
   ODon = ODonAnterior;
   if (ODon == 'b'){
     digitalWrite(bjtOD, LOW);
-    delay(100);
-    digitalWrite(releOD, LOW);
   }
   minutos = minprev;
   medir = onprev;
@@ -427,17 +407,15 @@ void mandarpH(){
   pHon = 'a'; // mantener encendido durante las 10 lecturas, evitar ciclar el rele
   for (int i = 0 ; i < 10 ; i++){
     medirpH(0);
-    Serial1.print("pH = ");
+    Serial1.print(F("pH = "));
     Serial1.println(pH);
-    Serial1.print("volt = ");
+    Serial1.print(F("volt = "));
     Serial1.println(volt);
     delay(100);
   }
   pHon = pHonAnterior;
   if (pHon == 'b'){
     digitalWrite(bjtpH, LOW);
-    delay(100);
-    digitalWrite(relepH, LOW);
   }
   minutos = minprev;
   medir = onprev;
@@ -448,9 +426,9 @@ void mandarEC(){
   medirT();
   //T = 28;
   medirEC();
-  Serial1.print("EC = ");
+  Serial1.print(F("EC = "));
   Serial1.println(EC);
-  Serial1.print("TDS = ");
+  Serial1.print(F("TDS = "));
   Serial1.println(TDS);
   minutos = minprev;
   medir = onprev;
@@ -464,14 +442,13 @@ void mandarT(){
   Ton = 'a'; // mantener encendido durante las 10 lecturas, evitar ciclar el rele
   for (int i = 0 ; i < 10 ; i++){
     medirT();
-    Serial1.print("T = ");
+    Serial1.print(F("T = "));
     Serial1.println(T);
     delay(100);
   }
   Ton = TonAnterior;
   if (Ton == 'b'){
     digitalWrite(bjtT, LOW);
-    digitalWrite(releT, LOW);
   }
   minutos = minprev;
   medir = onprev;
@@ -480,91 +457,62 @@ void mandarT(){
 
 void mandarReloj(){
   obtenerFecha();
-  Serial1.print("fecha: ");
+  Serial1.print(F("fecha: "));
   Serial1.println(fecha);  
   minutos = minprev;
   medir = onprev;
   datosReloj = 'b';
-  digitalWrite(bjt_RTC, LOW);
-  delay(100);
-//  digitalWrite(releSD_RTC, HIGH);
-//  delay(100);
+  // obtenerFecha() ya deja el RTC apagado
 }
 
 void pegarDatosEnSD(){
-  //digitalWrite(bjtSD_RTC, HIGH);
-  //delay(100);
+  digitalWrite(bjt_SD, HIGH); // alimentar la SD antes de escribir (MOSFET low-side: HIGH = encendido)
+  delay(1000);
   if (SD.begin(SSpin)){ //tarjeta sd conectada al canals SS vía pin 4
-    //Serial1.println("memoria encontrada !");
+    //Serial1.println(F("memoria encontrada !"));
   }else{
-    //Serial1.println("memoria no encontrada !");
-    //BLT.print("no encontro la memoria");
-    //digitalWrite(LedPin, HIGH);
-    //digitalWrite(13, HIGH);
+    Serial1.println(F("Memoria no encontrada!"));
   }
   datos = SD.open("mega.txt", FILE_WRITE);
   if (datos){
-    //Serial1.println("abrio el archivo");  
+    //Serial1.println(F("abrio el archivo"));
     datos.print(fecha);
-    datos.print(";");
+    datos.print(';');
     datos.print(OD);
-    datos.print(";");
+    datos.print(';');
     datos.print(EC);
-    datos.print(";");
+    datos.print(';');
     datos.print(TDS);
-    datos.print(";");
+    datos.print(';');
     datos.print(pH);
-    datos.print(";");
+    datos.print(';');
     datos.print(T);
-    datos.print(";");
+    datos.print(';');
     datos.println(punto);
     datos.close();
   }else{
-    //digitalWrite(13, HIGH);
-    //Serial1.println("no abrio el archivo");  
-    //BLT.print("no pudo abrir el archivo");
-    //digitalWrite(LedPin, HIGH);
+    Serial1.println(F("No abrio el archivo"));
   }
 
   digitalWrite(bjt_SD, LOW);
   delay(100);
-  //digitalWrite(releSD_RTC, HIGH);
-  //delay(100);
 
-  Serial3.begin(9600); // Manda los datos al NodeMCU8266 para conexión WiFi
-  delay(100);
-  Serial3.print(fecha);
-  Serial3.print(";");
-  Serial3.print(OD);
-  Serial3.print(";");
-  Serial3.print(EC);
-  Serial3.print(";");
-  Serial3.print(TDS);
-  Serial3.print(";");
-  Serial3.print(pH);
-  Serial3.print(";");
-  Serial3.print(T);
-  Serial3.print(";");
-  Serial3.println(punto);
-  delay(100);
-  Serial3.end();
   EC = "";
   TDS = "";
 }
 
 void chequearEstado(){
-  Serial1.println("Voy a mirar los datos");
+  Serial1.println(F("Voy a mirar los datos"));
   delay(200);
-  //digitalWrite(releSD_RTC, LOW);
   //delay(1000);
   digitalWrite(bjt_SD, HIGH);
   delay(1000);
   if (SD.begin(SSpin)){ //tarjeta sd conectada al canals SS vía pin 4
-    //Serial.println("memoria encontrada !");
+    //Serial.println(F("memoria encontrada !"));
   }else{
     //digitalWrite(LedPin, HIGH);
-    Serial1.println("memoria no encontrada !");
-    //Serial1.println("no encontro la memoria");
+    Serial1.println(F("memoria no encontrada !"));
+    //Serial1.println(F("no encontro la memoria"));
     //digitalWrite(13, HIGH);
   }
   estadoprev = SD.open("estado.txt");
@@ -579,12 +527,11 @@ void chequearEstado(){
     delay(100);
 
   }else{
-    Serial1.println("No hay estado previo");
+    Serial1.println(F("No hay estado previo"));
   }
   delay(100);
   digitalWrite(bjt_SD, LOW);
   delay(100);
-  //digitalWrite(releSD_RTC, HIGH);
 
   int posi = receivedString.indexOf(';');
       if (posi != -1) {
@@ -614,11 +561,14 @@ void chequearEstado(){
                 pendiente = token1.toFloat();
                 ordenada = token2.toFloat();
                 medir = token3.charAt(0);
-                minutos = token4.toInt();
+                minprev = token4.toInt(); // restaurar tambien minprev: guardarEstado() hace minutos = minprev
+                minutos = minprev;
                 punto = token5;
                 contador = receivedString.toInt();
                 if (medir == 'b'){
                   titulo = 'b';
+                  minprev = 0; // sin medicion no se duerme, para no quedar sordo al BT
+                  minutos = 0;
                 }
                 else {
                   titulo = 'a';
@@ -630,32 +580,31 @@ void chequearEstado(){
         }
       }
 
-  Serial1.print("m = ");
+  Serial1.print(F("m = "));
   Serial1.println(pendiente);
-  Serial1.print("O.O. = ");
+  Serial1.print(F("O.O. = "));
   Serial1.println(ordenada);
-  Serial1.print("Medir: ");
+  Serial1.print(F("Medir: "));
   Serial1.println(medir);
-  Serial1.print("Frecuencia (minutos): ");
+  Serial1.print(F("Frecuencia (minutos): "));
   Serial1.println(minutos/15);
-  Serial1.print("Punto: ");
+  Serial1.print(F("Punto: "));
   Serial1.println(punto);
-  Serial1.print("Reinicios: ");
+  Serial1.print(F("Reinicios: "));
   Serial1.println(contador);
 }
 
 void guardarEstado(){
-  //digitalWrite(releSD_RTC, LOW);
   delay(1000);
   digitalWrite(bjt_SD, HIGH);
   delay(1000);
 
   if (SD.begin(SSpin)){ //tarjeta sd conectada al canals SS vía pin 4
-    //Serial.println("memoria encontrada !");
+    //Serial.println(F("memoria encontrada !"));
   }else{
     //digitalWrite(LedPin, HIGH);
-    Serial1.println("memoria no encontrada !");
-    //Serial1.println("no encontro la memoria");
+    Serial1.println(F("memoria no encontrada !"));
+    //Serial1.println(F("no encontro la memoria"));
     //digitalWrite(13, HIGH);
   }
   
@@ -663,28 +612,27 @@ void guardarEstado(){
   if (estadoprev){
 
     estadoprev.print(pendiente);
-    estadoprev.print(";");
+    estadoprev.print(';');
     estadoprev.print(ordenada);
-    estadoprev.print(";");
+    estadoprev.print(';');
     estadoprev.print(medir);
-    estadoprev.print(";");
+    estadoprev.print(';');
     estadoprev.print(minprev);
-    estadoprev.print(";");
+    estadoprev.print(';');
     estadoprev.print(punto);
-    estadoprev.print(";");
+    estadoprev.print(';');
     estadoprev.print(contador);
     delay(100);
     estadoprev.close();
     delay(100);
 
-    Serial1.println("Cambios guardados");
+    Serial1.println(F("Cambios guardados"));
   }else{
-    Serial1.println("Cambios no guardados");
+    Serial1.println(F("Cambios no guardados"));
   }
 
   digitalWrite(bjt_SD, LOW);
   delay(100);
-  //digitalWrite(releSD_RTC, HIGH);
   delay(100);
 
   cambioEstado = 'b';
@@ -692,18 +640,17 @@ void guardarEstado(){
 }
 
 void mandarDatos(){
-  //digitalWrite(releSD_RTC, LOW);
   delay(1000);
   digitalWrite(bjt_SD, HIGH);
   delay(1000);
   if (SD.begin(SSpin)){ //tarjeta sd conectada al canals SS vía pin 4
-    //Serial.println("memoria encontrada !");
+    //Serial.println(F("memoria encontrada !"));
   }else{
-    Serial1.println("Memoria no encontrada!");
+    Serial1.println(F("Memoria no encontrada!"));
   }
   datos = SD.open("mega.txt");
   if (datos){
-    //Serial.println("abrio el archivo");
+    //Serial.println(F("abrio el archivo"));
     datos.seek(pos);
     while (datos.available()){
     //while (pos<10){
@@ -711,13 +658,13 @@ void mandarDatos(){
       pos++;
     }
     datos.close();
-    Serial1.println("Datos enviados.");
+    Serial1.println(F("Datos enviados."));
   }
   else{
     //digitalWrite(LedPin, HIGH);
-    //Serial1.println("no pudo abrir el archivo");
+    //Serial1.println(F("no pudo abrir el archivo"));
     //digitalWrite(13, HIGH);
-    Serial1.println("No abrio el archivo");  
+    Serial1.println(F("No abrio el archivo"));  
   }
   minutos = minprev;
   medir = onprev;
@@ -725,7 +672,6 @@ void mandarDatos(){
   delay(100);
   digitalWrite(bjt_SD, LOW);
   delay(100);
-  //digitalWrite(releSD_RTC, HIGH);
   delay(100);
 }
 
@@ -740,80 +686,56 @@ void eliminarArchivo(){
     case 'k':
     digitalWrite(bjt_SD, HIGH);
     delay(100);
-    //digitalWrite(releSD_RTC, LOW);
     delay(100);
     if (SD.begin(SSpin)){
       if (SD.exists("mega.txt")){
        SD.remove("mega.txt");
-       Serial1.println("Archivo eliminado");
+       Serial1.println(F("Archivo eliminado"));
       }else{
-        Serial1.println("El archivo no existe");
+        Serial1.println(F("El archivo no existe"));
         //digitalWrite(13, HIGH);
      }
     }else{
-     Serial1.println("No pudo eliminar el archivo");
+     Serial1.println(F("No pudo eliminar el archivo"));
       //digitalWrite(13, HIGH);
     }
     delay(100);
     digitalWrite(bjt_SD, LOW);
     delay(100);
-    //digitalWrite(releSD_RTC, HIGH);
     minutos = minprev;
     medir = onprev;
     eliminar = 'b';
     break;
 
     case 'a':
-    //Serial1.println("aaasa te asustaste");
-    Serial1.println("Cancelado");
+    //Serial1.println(F("aaasa te asustaste"));
+    Serial1.println(F("Cancelado"));
     break;
   }
-  /*digitalWrite(bjtSD_RTC, HIGH);
-  delay(100);
-  if (SD.begin(SSpin)){
-    if (SD.exists("mega.txt")){
-      SD.remove("mega.txt");
-      Serial1.println("archivo eliminado");
-    }else{
-      Serial1.println("el archivo no existe");
-      //digitalWrite(13, HIGH);
-    }
-  }else{
-    Serial1.println("no pudo eliminar el archivo");
-    //digitalWrite(13, HIGH);
-  }
-  delay(100);
-  digitalWrite(bjtSD_RTC, LOW);
-  minutos = minprev;
-  medir = onprev;
-  eliminar = 'b';*/
 }
 
 void obtenerFecha(){
-  //digitalWrite(releSD_RTC, LOW);
   delay(100);
   digitalWrite(bjt_RTC, HIGH);
   delay(100);
   if (rtc.begin()){
     dt = rtc.now();
+  }else{
+    Serial1.println(F("Error: no se pudo leer el reloj"));
   }
   fecha = String(dt.day()) + "/" + String(dt.month()) + "/" + String(dt.year()) + ";" + String(dt.hour()) + ":" + String(dt.minute()) + ":" + String(dt.second());
-  //if (dt.day() > 31 || dt.month() > 12 || dt.year() > 2100 || dt.day() < 0 || dt.month() < 0 || dt.year() < 2020){
-    //digitalWrite(13, HIGH);
-    //Serial1.print("midio mal el reloj");
-  //}
-  //digitalWrite(bjtSD_RTC, LOW);
+  delay(100);
+  digitalWrite(bjt_RTC, LOW); // el DS3231 mantiene la hora con su pila de respaldo
 }
 
 void corregirReloj(){
-  //digitalWrite(releSD_RTC, LOW);
   delay(100);
   digitalWrite(bjt_RTC, HIGH);
   delay(100);
   if (rtc.begin()){
-    Serial.println("reloj bien");
+    Serial.println(F("reloj bien"));
   }else{
-    Serial.println("reloj mal");
+    Serial.println(F("reloj mal"));
   }  
   rtc.adjust(dt); 
   obtenerFecha();
@@ -821,19 +743,16 @@ void corregirReloj(){
   delay(100);
   digitalWrite(bjt_RTC, LOW);
   delay(100);
-  //digitalWrite(releSD_RTC, HIGH);
 }
   
 void medirEC(){
   char sensorstring_array[30]; 
   EC = "";
-  digitalWrite(releEC, HIGH);
-  delay(100);
   digitalWrite(bjtEC, HIGH);
   delay(1500);
-  Serial2.begin(9600); // Serial2 es RX3 (15) a SDA y TX3 (14) a SCL
+  Serial2.begin(9600); // Serial2 en el Mega es TX2 (D16) y RX2 (D17), cableado al modulo de conductividad
   delay(1500);
-  //Serial2.print("O,TDS,1");
+  //Serial2.print(F("O,TDS,1"));
   //Serial2.print('\r');
   //EC = Serial2.readStringUntil(13);
   //Serial1.println(EC);
@@ -847,7 +766,8 @@ void medirEC(){
       break;
     }
   }*/
-  Serial2.print("RT," + String(T));  // chequear que esto funcione
+  Serial2.print(F("RT,"));
+  Serial2.print(T);  // chequear que esto funcione
   Serial2.print('\r');
   delay(1200);
   sensorstring = Serial2.readStringUntil(13);
@@ -860,8 +780,6 @@ void medirEC(){
   Serial2.end();
   if (ECon == 'b'){
     digitalWrite(bjtEC, LOW); 
-    delay(100);
-    digitalWrite(releEC, LOW); 
   }
 }
 
@@ -869,7 +787,7 @@ void medirEC(){
 
 void calibrarEC(){
   delay(100);
-  Serial1.println("Enviar 'OK' para 2 puntos o 'EC 1 pto' para 1");
+  Serial1.println(F("Enviar 'OK' para 2 puntos o 'EC 1 pto' para 1"));
   delay(100);
   unsigned long t0EC = millis();
   while(datobt != 'k'){ // esto lo podria cambiar, y poner simplemente en vez de datobt, un char nuevo vacio y que el while sea mientras siga valiendo '', y cuando recibe algo sale
@@ -881,7 +799,7 @@ void calibrarEC(){
       break;
     }
     if (millis() - t0EC > TIMEOUT_BT_MS){
-      Serial1.println("Tiempo de espera agotado, cancelando");
+      Serial1.println(F("Tiempo de espera agotado, cancelando"));
       datobt = 'a';
       break;
     }
@@ -889,7 +807,7 @@ void calibrarEC(){
   char c = ' ';
   switch(datobt){
     case 'D': // para 1 punto
-    Serial1.println("mandar valor de punto");
+    Serial1.println(F("mandar valor de punto"));
     punto1 = 0;
     delay(100);
     t0EC = millis();
@@ -902,33 +820,30 @@ void calibrarEC(){
         }
       }
       if (millis() - t0EC > TIMEOUT_BT_MS){
-        Serial1.println("Tiempo de espera agotado, cancelando");
+        Serial1.println(F("Tiempo de espera agotado, cancelando"));
         c = 'a';
         break;
       }
     }
     switch (c){
       case 'a':
-      Serial1.println("de baja la calibracion");
+      Serial1.println(F("de baja la calibracion"));
       break;
 
       default:
-      digitalWrite(releEC, HIGH);
-      delay(100);
       digitalWrite(bjtEC, HIGH);
       delay(1200);
       Serial2.begin(9600);
       delay(1200);
-      Serial2.print("cal," + String(punto1));  // chequear que esto funcione
+      Serial2.print(F("cal,"));
+      Serial2.print(punto1);  // chequear que esto funcione
       Serial2.print('\r');                             //add a <CR> to the end of the string
       delay(100);
       Serial1.println(Serial2.readStringUntil(13));
       delay(100);
       Serial2.end();
-      digitalWrite(releEC, LOW);
-      delay(100);
       digitalWrite(bjtEC, LOW);
-      Serial1.println("EC cal");
+      Serial1.println(F("EC cal"));
       delay(100);
       break;
     }
@@ -937,19 +852,20 @@ void calibrarEC(){
     delay(1200);
     Serial2.begin(9600);
     delay(1200);
-    Serial2.print("cal," + String(punto1));  // chequear que esto funcione
+    Serial2.print(F("cal,"));
+    Serial2.print(punto1);  // chequear que esto funcione
     Serial2.print('\r');                             //add a <CR> to the end of the string
     delay(100);
     Serial1.println(Serial2.readStringUntil(13));
     delay(100);
     Serial2.end();
     digitalWrite(bjtEC, LOW);
-    Serial1.println("EC cal");
+    Serial1.println(F("EC cal"));
     delay(100);
     break;*/
     
     case 'k': // para 2 puntos
-    Serial1.println("mandar valor de 1er punto (menor)");
+    Serial1.println(F("mandar valor de 1er punto (menor)"));
     punto1 = 0;
     delay(100);
     t0EC = millis();
@@ -962,32 +878,29 @@ void calibrarEC(){
         }
       }
       if (millis() - t0EC > TIMEOUT_BT_MS){
-        Serial1.println("Tiempo de espera agotado, cancelando");
+        Serial1.println(F("Tiempo de espera agotado, cancelando"));
         c = 'a';
         break;
       }
     }
     switch (c){
       case 'a':
-      Serial1.println("de baja la calibracion");
+      Serial1.println(F("de baja la calibracion"));
       break;
 
       default:
-      digitalWrite(releEC, HIGH);
-      delay(100);
       digitalWrite(bjtEC, HIGH);
       delay(1200);
       Serial2.begin(9600);
       delay(1200);
-      Serial2.print("cal,low," + String(punto1));  // chequear que esto funcione
+      Serial2.print(F("cal,low,"));
+      Serial2.print(punto1);  // chequear que esto funcione
       Serial2.print('\r');                             //add a <CR> to the end of the string
       delay(100);
       Serial1.println(Serial2.readStringUntil(13));
       Serial2.end();
-      digitalWrite(releEC, LOW);
-      delay(100);
       digitalWrite(bjtEC, LOW);
-      Serial1.println("mandar valor de 2do punto (mayor)");
+      Serial1.println(F("mandar valor de 2do punto (mayor)"));
       punto2 = 0;
       delay(100);
       t0EC = millis();
@@ -1000,58 +913,52 @@ void calibrarEC(){
           break;
         }
         if (millis() - t0EC > TIMEOUT_BT_MS){
-          Serial1.println("Tiempo de espera agotado, cancelando");
+          Serial1.println(F("Tiempo de espera agotado, cancelando"));
           c = 'a';
           break;
         }
       }
       switch (c){
         case 'a':
-        Serial1.println("de baja la calibracion");
+        Serial1.println(F("de baja la calibracion"));
         break;                
         
         default:
-        digitalWrite(releEC, HIGH);
-        delay(100);
         digitalWrite(bjtEC, HIGH);
         delay(1200);
         Serial2.begin(9600);
         delay(1200);
-        Serial2.print("cal,high," + String(punto2));  // chequear que esto funcione
+        Serial2.print(F("cal,high,"));
+        Serial2.print(punto2);  // chequear que esto funcione
         Serial2.print('\r');                             //add a <CR> to the end of the string
         delay(100);
         Serial1.println(Serial2.readStringUntil(13));
         delay(100);
         Serial2.end();
-        digitalWrite(releEC, LOW);
-        delay(100);
         digitalWrite(bjtEC, LOW);
-        Serial1.println("EC cal");
+        Serial1.println(F("EC cal"));
         break;
       }
     }
     break;
 
     case 'S':
-    Serial1.println("calibrando con punto Std");
-    digitalWrite(releEC, HIGH);
-    delay(100);
+    Serial1.println(F("calibrando con punto Std"));
     digitalWrite(bjtEC, HIGH);
     delay(1200);
     Serial2.begin(9600);
     delay(1200);
-    Serial2.print("cal," + String(puntoStd));  // chequear que esto funcione
+    Serial2.print(F("cal,"));
+    Serial2.print(puntoStd);  // chequear que esto funcione
     Serial2.print('\r');                             //add a <CR> to the end of the string
     delay(100);
     Serial2.end();
-    digitalWrite(releEC, LOW);
-    delay(100);
     digitalWrite(bjtEC, LOW);
-    Serial1.println("EC cal");
+    Serial1.println(F("EC cal"));
     break;
 
     case 'a':
-    Serial1.println("de baja la calibracion");
+    Serial1.println(F("de baja la calibracion"));
     break;
   }
   delay(100);
@@ -1061,14 +968,12 @@ void calibrarEC(){
 }
 
 void calibrarOD(){
-  digitalWrite(releOD, HIGH);
-  delay(100);
   digitalWrite(bjtOD, HIGH);
   delay(100);
   if(DO.begin()){
-    //Serial.println("Loaded EEPROM");
+    //Serial.println(F("Loaded EEPROM"));
   }
-  Serial1.println("sn sat 100 y OK");
+  Serial1.println(F("sn sat 100 y OK"));
   unsigned long t0OD = millis();
   while(datobt != 'k'){
     if (Serial1.available()){
@@ -1080,7 +985,7 @@ void calibrarOD(){
       break;
     }
     if (millis() - t0OD > TIMEOUT_BT_MS){
-      Serial1.println("Tiempo de espera agotado, cancelando");
+      Serial1.println(F("Tiempo de espera agotado, cancelando"));
       datobt = 'a';
       break;
     }
@@ -1089,15 +994,13 @@ void calibrarOD(){
   switch(datobt){
     case 'k':
     DO.cal();
-    Serial1.println("OD cal a 100");  
+    Serial1.println(F("OD cal a 100"));  
     break;
 
     case 'a':
-    Serial1.println("de baja la calibracion");
+    Serial1.println(F("de baja la calibracion"));
     break;
   }
-  digitalWrite(releOD, LOW);
-  delay(100);
   digitalWrite(bjtOD, LOW);
   delay(100);
   minutos = minprev;
@@ -1111,9 +1014,9 @@ void interrupcionBT(){
   //}
   switch(datobt){
     case 'v':
-    Serial1.print("m = ");
+    Serial1.print(F("m = "));
     Serial1.println(pendiente);
-    Serial1.print("O.O. = ");
+    Serial1.print(F("O.O. = "));
     Serial1.println(ordenada);
     break;
     
@@ -1121,7 +1024,7 @@ void interrupcionBT(){
     minprev = 14; // tendría 1 seg más de delay con los 3200
     minutos = 0;
     //msdelay = 2200;
-    Serial1.println("1 min");
+    Serial1.println(F("1 min"));
     cambioEstado = 'a';
     //guardarEstado();
     break;
@@ -1130,7 +1033,7 @@ void interrupcionBT(){
     minprev = 216; // 
     minutos = 0;
     //msdelay = 2200;
-    Serial1.println("15 min");
+    Serial1.println(F("15 min"));
     cambioEstado = 'a';
     //guardarEstado();
     break;
@@ -1139,7 +1042,7 @@ void interrupcionBT(){
     minprev = 441; // tendría 2 seg más de delay con los 3200 (en realidad eran 26 o 27 seg, no 30 --> puse 443 en vez de 442) --> 1er prueba: +8 seg, pongo en 441
     minutos = 0;
     //msdelay = 1200;
-    Serial1.println("30 min");
+    Serial1.println(F("30 min"));
     cambioEstado = 'a';
     //guardarEstado();
     break;
@@ -1148,7 +1051,7 @@ void interrupcionBT(){
     minprev = 70; // 
     minutos = 0;
     //msdelay = 1200;
-    Serial1.println("5 min");
+    Serial1.println(F("5 min"));
     cambioEstado = 'a';
     //guardarEstado();
     break;
@@ -1156,13 +1059,13 @@ void interrupcionBT(){
     /*case '6':
     minutos = 887; // tendría 1 seg menos de delay con los 3200 (si lo dejaba en 884, pero lo puse en 885 y msdelay = 200) --> eran 51 seg, no 60 --> puse 887 y 1200 en vez de 885 y 200
     //msdelay = 1200;
-    BLT.println("1 hora");
+    BLT.println(F("1 hora"));
     break;*/
 
     case 'n':
     minprev = 3;
     minutos = 0;
-    Serial1.println("15 seg");
+    Serial1.println(F("15 seg"));
     cambioEstado = 'a';
     //guardarEstado();
     break;
@@ -1170,24 +1073,27 @@ void interrupcionBT(){
     case 'g': 
     medir = 'a';
     //guardarEstado();
-    //Serial1.println("a medir");
-    Serial1.println("Configurar medición");
+    //Serial1.println(F("a medir"));
+    Serial1.println(F("Configurar medición"));
     break;
       
     case 'r':
     medir = 'b';
     titulo = 'b';
     //punto = "";
-    minprev = 441; // dormir profundo (30 min) mientras la medicion esta apagada; el BT despierta igual por interrupcion
+    // Con la medicion apagada NO se duerme: minprev = 0 hace que el for de loop()
+    // no se ejecute y el equipo quede siempre despierto y receptivo al BT.
+    // (Al dormir, el USART no tiene reloj y se pierden los bytes que llegan.)
+    minprev = 0;
     minutos = 0;
-    Serial1.println("apagando...");
+    Serial1.println(F("apagando..."));
     cambioEstado = 'a';
     //guardarEstado();
-    //Serial1.println("off");
+    //Serial1.println(F("off"));
     break;
 
     case 'y': 
-    Serial1.println("ahi te mando");
+    Serial1.println(F("ahi te mando"));
     enviar = 'a';
     onprev = medir;
     medir = 'b';
@@ -1196,7 +1102,7 @@ void interrupcionBT(){
     break;
 
     case 'w': 
-    Serial1.println("ahi te mando");
+    Serial1.println(F("ahi te mando"));
     pos = 0;
     enviar = 'a';
     onprev = medir;
@@ -1206,7 +1112,7 @@ void interrupcionBT(){
     break;
 
     case 'X': 
-    Serial1.println("datos OD");
+    Serial1.println(F("datos OD"));
     datosOD = 'a';
     onprev = medir;
     medir = 'b';
@@ -1215,7 +1121,7 @@ void interrupcionBT(){
     break;
     
     case 'P': 
-    Serial1.println("datos pH");
+    Serial1.println(F("datos pH"));
     datospH = 'a';
     onprev = medir;
     medir = 'b';
@@ -1224,7 +1130,7 @@ void interrupcionBT(){
     break;
 
     case 'Z': 
-    Serial1.println("datos EC");
+    Serial1.println(F("datos EC"));
     datosEC = 'a';
     onprev = medir;
     medir = 'b';
@@ -1233,7 +1139,7 @@ void interrupcionBT(){
     break;
 
     case 'R': 
-    Serial1.println("reloj");
+    Serial1.println(F("reloj"));
     datosReloj = 'a';
     onprev = medir;
     medir = 'b';
@@ -1242,7 +1148,7 @@ void interrupcionBT(){
     break;
     
     case 'T': 
-    Serial1.println("datos T");
+    Serial1.println(F("datos T"));
     datosT = 'a';
     onprev = medir;
     medir = 'b';
@@ -1260,17 +1166,17 @@ void interrupcionBT(){
 
     case '#': // dejar prendido EC
     ECon = 'a';
-    Serial1.println("mantener EC on");
+    Serial1.println(F("mantener EC on"));
     break;
 
     case '@': // dejar prendido OD
     ODon = 'a';
-    Serial1.println("mantener OD on");
+    Serial1.println(F("mantener OD on"));
     break;
 
     case '-': // dejar prendido pH
     pHon = 'a';
-    Serial1.println("mantener pH on");
+    Serial1.println(F("mantener pH on"));
     break;
 
     case '&':
@@ -1278,18 +1184,18 @@ void interrupcionBT(){
     ECon = 'b';
     ODon = 'b';
     pHon = 'b';
-    Serial1.println("mantener todos apagados");
+    Serial1.println(F("mantener todos apagados"));
     break;
 
     case '?':
-    Serial1.print("cada ");
+    Serial1.print(F("cada "));
     Serial1.print(minutos/15); 
-    Serial1.print(" minutos ; estado = ");
+    Serial1.print(F(" minutos ; estado = "));
     Serial1.println(medir);
     break;
 
     case 'd':
-    Serial1.println("cal EC");
+    Serial1.println(F("cal EC"));
     calEC = 'a';
     onprev = medir;
     medir = 'b';
@@ -1298,7 +1204,7 @@ void interrupcionBT(){
     break;
 
     case 'c':
-    Serial1.println("cal pH");
+    Serial1.println(F("cal pH"));
     calpH = 'a';
     onprev = medir;
     medir = 'b';
@@ -1307,8 +1213,8 @@ void interrupcionBT(){
     break;
 
     case 'e':
-    Serial1.println("eliminar archivo? seguro?");
-    //Serial1.println("eliminando...");
+    Serial1.println(F("eliminar archivo? seguro?"));
+    //Serial1.println(F("eliminando..."));
     eliminar = 'a';
     onprev = medir;
     medir = 'b';
@@ -1317,7 +1223,7 @@ void interrupcionBT(){
     break;
     
     case 'O':
-    Serial1.println("cal OD");
+    Serial1.println(F("cal OD"));
     calOD = 'a';
     onprev = medir;
     medir = 'b';
@@ -1404,16 +1310,6 @@ void setearPines(){
   digitalWrite(bjt_RTC, LOW);
   pinMode(bjt_SD, OUTPUT);
   digitalWrite(bjt_SD, LOW);
-  pinMode(releOD, OUTPUT);
-  digitalWrite(releOD, LOW); 
-  pinMode(relepH, OUTPUT);
-  digitalWrite(relepH, LOW);
-  pinMode(releEC, OUTPUT);
-  digitalWrite(releEC, LOW);
-  pinMode(releT, OUTPUT);
-  digitalWrite(releT, LOW);
-//  pinMode(releSD_RTC, OUTPUT);
-//  digitalWrite(releSD_RTC, LOW);
 }
 
 void apagarPines(){
@@ -1460,28 +1356,3 @@ void apagarPines(){
   }*/
 }
 
-/*void probarMemoria(){
-  digitalWrite(bjtSD_RTC, HIGH);
-  delay(100);
-  rtc.adjust(dt); // COMENTAR UNA VEZ AJUSTADA Y VOLVER A SUBIR
-  delay(100);
-  digitalWrite(bjtSD_RTC, LOW);*/
-  /*digitalWrite(bjtSD_RTC, HIGH);
-  delay(100);
-  if (SD.begin(SSpin)){ 
-    Serial.println("abrio la memoria");
-  }else{
-    Serial.println("no");
-    digitalWrite(13, HIGH);
-  }
-  datos = SD.open("mega.txt");//abrimos  el archivo 
-  if (datos) {
-    Serial.println("abrio");
-    datos.close(); //cerramos el archivo
-  } else {
-    Serial.println("Error al abrir el archivo");
-  }
-  delay(100);
-  digitalWrite(bjtSD_RTC, LOW);
-}
-*/
