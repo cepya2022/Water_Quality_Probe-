@@ -53,22 +53,27 @@ The research team is continuosly working on and improving the code. It is writte
 
 Target board: **Arduino Mega 2560**.
 
-⚠️ **`do_grav.h` is not included in this repository.** The sketch depends on it for the dissolved
-oxygen sensor (`Gravity_DO` class), so the project will not compile until you add it. It is the
-sample code supplied by Atlas Scientific for the Gravity Analog Dissolved Oxygen meter — obtain
-`do_grav.h` / `do_grav.cpp` from the manufacturer and place them next to the `.ino` file.
+⚠️ **`do_grav.h` is not included in this repository**, so the sketch will not compile from a fresh
+clone until the library that provides it is installed. It comes from Atlas Scientific's
+**`atlas_gravity`** library (the `Gravity_DO` class used for the dissolved oxygen sensor). That
+library is not published to the Arduino Library Manager — download it from Atlas Scientific's
+GitHub and copy the `atlas_gravity` folder into your Arduino `libraries/` directory manually.
 
-The following libraries must be installed through the Arduino IDE Library Manager:
+The following libraries are also required. All except `atlas_gravity` are available through the
+Arduino IDE Library Manager:
 
 | Library | Used for |
 |---|---|
+| `atlas_gravity` | dissolved oxygen sensor (`do_grav.h`) — **manual install, see above** |
 | `RTClib` | DS3231 real time clock |
-| `LowPower` | sleep between measurements |
+| `Low-Power` | sleep between measurements |
 | `DallasTemperature` | DS18B20 temperature sensor |
 | `OneWire` | DS18B20 bus |
 | `Wire` | I²C (RTC) — bundled with the IDE |
 | `SPI` | SD card bus — bundled with the IDE |
 | `SD` | SD card — bundled with the IDE |
+
+The conductivity module is driven over `Serial2` with plain text commands, so it needs no library.
 
 Setting the clock: `corregirReloj()` is called from `setup()` but is left commented out. Uncomment
 it, upload once while connected to a computer so the RTC picks up the compile-time timestamp, then

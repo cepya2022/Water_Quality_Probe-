@@ -20,6 +20,13 @@
 
 const unsigned long TIMEOUT_BT_MS = 300000UL; // 5 min de espera max por datos via BT antes de cancelar
 
+// Modo de sueño entre mediciones. Ver dormirUnCiclo().
+//   1 = idle      -> el reloj de I/O sigue activo, USART1 recibe mientras duerme:
+//                    los comandos BT NO se pierden. Consume ~8-10 mA mas.
+//   0 = powerDown -> consumo minimo, pero el USART queda sin reloj y se pierde
+//                    todo byte que llegue durante el sueño.
+#define SUENO_RECEPTIVO_BT 1
+
 float volt, volt4, volt7; // medición y calibración de pH
 float pendiente = -4.040; // nueva calibracion con boya 2.0
 float ordenada = 22.600; // nueva calibracion con boya 2.0
@@ -89,13 +96,33 @@ void setup() {
   delay(1000);
 }
 
-void loop() { 
+// Duerme un bloque de 4 s. Despierta antes si llega algo por BT.
+void dormirUnCiclo(){
+#if SUENO_RECEPTIVO_BT
+  // SLEEP_MODE_IDLE: se detiene el CPU pero sigue el reloj de I/O, asi USART1
+  // (Bluetooth, pines 18/19) recibe los bytes que lleguen durante el sueño.
+  // IMPORTANTE: en modo idle CUALQUIER interrupcion habilitada despierta al MCU.
+  // Por eso hay que apagar TODOS los timers: si TIMER0 queda encendido, su
+  // desborde de ~1 ms (el de millis()) despertaria al equipo enseguida y esta
+  // funcion volveria a los ~1 ms en lugar de a los 4 s, achicando el intervalo
+  // de medicion unas 4000 veces. Asi solo despiertan el watchdog o el BT.
+  LowPower.idle(SLEEP_4S, ADC_OFF,
+                TIMER5_OFF, TIMER4_OFF, TIMER3_OFF, TIMER2_OFF, TIMER1_OFF, TIMER0_OFF,
+                SPI_OFF,
+                USART3_OFF, USART2_OFF, USART1_ON, USART0_OFF,
+                TWI_OFF);
+#else
+  LowPower.powerDown(SLEEP_4S, ADC_OFF, BOD_OFF);
+#endif
+}
+
+void loop() {
   if (cambioEstado == 'a'){
     guardarEstado();
   }
   delay(1000); // ver si puedo bajar este delay
   for (int i = 0; i < minutos; i++){
-    LowPower.powerDown(SLEEP_4S, ADC_OFF, BOD_OFF);     
+    dormirUnCiclo();
   }
   hacerAccion();
 }
