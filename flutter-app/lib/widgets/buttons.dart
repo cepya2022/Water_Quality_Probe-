@@ -1,290 +1,183 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/bluetooth_provider.dart';
-import '../constants.dart';
 
+import '../l10n/strings.dart';
+import '../theme/app_theme.dart';
 
-class ControlButtons extends StatelessWidget {
-  final int buttonSet;
+/// A single firmware command: what the button says, and the character the
+/// probe listens for.
+@immutable
+class ProbeCommand {
+  const ProbeCommand(this.label, this.code);
 
-  const ControlButtons({Key? key, required this.buttonSet}) : super(key: key);
+  final String label;
+  final String code;
+}
+
+/// One tab of the terminal's command palette.
+@immutable
+class CommandSet {
+  const CommandSet(this.id, this.label, this.commands);
+
+  final String id;
+  final String label;
+  final List<ProbeCommand> commands;
+}
+
+/// The six command groups from the canvas, in canvas order. The codes match
+/// the ones `Code_Water_Quality_Probe.ino` parses.
+List<CommandSet> buildCommandSets(AppStrings s) {
+  return <CommandSet>[
+    CommandSet('estado', s.setStatus, <ProbeCommand>[
+      ProbeCommand(s.cmdStatus, '?'),
+      ProbeCommand(s.cmdClock, 'R'),
+      ProbeCommand(s.cmdNewData, 'y'),
+    ]),
+    CommandSet('medicion', s.setMeasurement, <ProbeCommand>[
+      ProbeCommand(s.cmdOn, 'g'),
+      ProbeCommand(s.cmdOff, 'r'),
+      ProbeCommand(s.cmdOk, 'k'),
+      ProbeCommand(s.cmdCancel, 'a'),
+      const ProbeCommand('15"', 'n'),
+      const ProbeCommand("1'", 'o'),
+      const ProbeCommand("5'", 'h'),
+      const ProbeCommand("15'", 'q'),
+      const ProbeCommand("30'", 't'),
+    ]),
+    CommandSet('calib', s.setCalibration, <ProbeCommand>[
+      ProbeCommand(s.cmdCalPh, 'c'),
+      ProbeCommand(s.cmdSetPh, '%'),
+      ProbeCommand(s.cmdMPh, 'v'),
+      ProbeCommand(s.cmdCalOd, 'O'),
+      ProbeCommand(s.cmdCalEc, 'd'),
+      ProbeCommand(s.cmdEcOnePoint, 'D'),
+      ProbeCommand(s.cmdOk, 'k'),
+      ProbeCommand(s.cmdCancel, 'a'),
+    ]),
+    CommandSet('sensores', s.setSensors, <ProbeCommand>[
+      ProbeCommand(s.cmdPhOn, '-'),
+      ProbeCommand(s.cmdOdOn, '@'),
+      ProbeCommand(s.cmdEcOn, '#'),
+      ProbeCommand(s.cmdAllOff, '&'),
+    ]),
+    CommandSet('lectura', s.setReading, <ProbeCommand>[
+      const ProbeCommand('pH', 'P'),
+      const ProbeCommand('OD', 'X'),
+      const ProbeCommand('EC', 'Z'),
+      ProbeCommand(s.shortTemp, 'T'),
+    ]),
+    CommandSet('datos', s.setData, <ProbeCommand>[
+      ProbeCommand(s.cmdData, 'y'),
+      ProbeCommand(s.cmdAll, 'w'),
+      ProbeCommand(s.cmdErase, 'e'),
+    ]),
+  ];
+}
+
+/// The wrapping grid of command buttons under the terminal's tab strip: a
+/// label with the raw command code underneath.
+class CommandButtonGrid extends StatelessWidget {
+  const CommandButtonGrid({
+    Key? key,
+    required this.commands,
+    required this.onSend,
+    this.enabled = true,
+  }) : super(key: key);
+
+  final List<ProbeCommand> commands;
+  final ValueChanged<ProbeCommand> onSend;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<BluetoothProvider>(context, listen: false);
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        const double spacing = 8;
+        const double minWidth = 82;
+        final int columns =
+            ((constraints.maxWidth + spacing) / (minWidth + spacing))
+                .floor()
+                .clamp(2, 5)
+                .toInt();
+        final double width =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        children: _getButtonSet(provider),
-      ),
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: <Widget>[
+            for (final ProbeCommand command in commands)
+              SizedBox(
+                width: width,
+                child: CommandButton(
+                  command: command,
+                  onTap: enabled ? () => onSend(command) : null,
+                ),
+              ),
+          ],
+        );
+      },
     );
-  }
-
-  List<Widget> _getButtonSet(BluetoothProvider provider) {
-    switch (buttonSet) {
-      case 1:
-        return [
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("g"),
-            child: Text("On"),
-            style: ElevatedButton.styleFrom(
-                    foregroundColor: primaryColor,
-                )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("r"),
-            child: Text("Off"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("k"),
-            child: Text("Ok"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("a"),
-            child: Text("Cancelar"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("n"),
-            child: Text("15"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("o"),
-            child: Text("1'"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("h"),
-            child: Text("5'"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("q"),
-            child: Text("15'"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("t"),
-            child: Text("30'"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-        ];
-      case 2:
-        return [
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("c"),
-            child: Text("Cal pH"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("%"),
-            child: Text("Set pH"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("v"),
-            child: Text("m pH"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("O"),
-            child: Text("Cal OD"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("d"),
-            child: Text("Cal EC"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("D"),
-            child: Text("EC 1 pto"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("k"),
-            child: Text("Ok"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("a"),
-            child: Text("Cancelar"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-        ];
-      case 3:
-        return[
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("-"),
-            child: Text("pH: On"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("@"),
-            child: Text("OD: On"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("#"),
-            child: Text("EC: On"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("&"),
-            child: Text("Todos Off"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-        ];
-      case 4:
-        return [
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("P"),
-            child: Text("pH"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("X"),
-            child: Text("OD"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("Z"),
-            child: Text("EC"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("T"),
-            child: Text("Temp"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-      ];
-      case 5:
-        return[
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("y"),
-            child: Text("Datos"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("w"),
-            child: Text("Todo"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("e"),
-            child: Text("Eliminar"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          // SizedBox(width: 8),
-        ];
-      default:
-        return [
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("?"),
-            child: Text("Estado"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("y"),
-            child: Text("Datos"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => provider.sendMessage("R"),
-            child: Text("Reloj"),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: primaryColor,
-              )
-          ),
-        ];
-    }
   }
 }
 
+/// A single 52px command tile.
+class CommandButton extends StatelessWidget {
+  const CommandButton({
+    Key? key,
+    required this.command,
+    required this.onTap,
+    this.height = 52,
+    this.radius = 15,
+  }) : super(key: key);
+
+  final ProbeCommand command;
+  final VoidCallback? onTap;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final SensaColors c = context.colors;
+    final bool enabled = onTap != null;
+
+    return Material(
+      color: c.surface,
+      borderRadius: BorderRadius.circular(radius),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(radius),
+        child: Container(
+          height: height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(color: c.border),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Text(
+                command.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: enabled ? c.text : c.muted,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                command.code,
+                style: monoStyle(
+                  fontSize: 9,
+                  color: c.muted,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

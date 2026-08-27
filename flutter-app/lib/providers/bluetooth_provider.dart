@@ -6,12 +6,13 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+
+import '../models/reading.dart';
 // import 'package:share/share.dart';
 
 class BluetoothProvider extends ChangeNotifier {
   BluetoothDevice? _device;
   BluetoothDevice? _lastDevice;
-  BluetoothConnectionState _deviceState = BluetoothConnectionState.disconnected;
   bool _isConnecting = false;
   bool _isConnected = false;
   bool _isData = false;
@@ -19,27 +20,97 @@ class BluetoothProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _messages = [];
   List<BluetoothDevice> systemDevices = [];
   List<ScanResult> scanResults = [];
-  List<List<String>> _dataBuffer = [
-    ["01/02/2025", "2.1", "3.4", "1.9", "2.7", "3.0", "2.5", "3.3"],
-    ["02/02/2025", "1.8", "2.2", "2.9", "1.6", "2.1", "2.3", "2.7"],
-    ["03/02/2025", "3.5", "3.1", "2.8", "3.3", "2.9", "3.0", "2.7"],
-    ["04/02/2025", "1.9", "2.0", "1.8", "2.2", "2.5", "1.7", "2.1"],
-    ["05/02/2025", "2.3", "2.9", "2.6", "2.7", "2.8", "3.0", "2.4"],
-    ["06/02/2025", "3.1", "3.3", "3.0", "3.2", "2.9", "3.5", "3.4"],
-    ["07/02/2025", "2.0", "2.2", "2.1", "2.0", "2.3", "2.4", "2.2"],
-    ["08/02/2025", "1.7", "1.9", "2.0", "1.8", "1.6", "2.1", "1.9"],
-    ["09/02/2025", "3.0", "2.8", "3.2", "2.7", "2.6", "3.1", "2.9"],
-    ["10/02/2025", "2.4", "2.5", "2.3", "2.6", "2.7", "2.2", "2.1"]];
+  List<List<String>> _dataBuffer = [];
   String _buffer = ""; // Buffer para almacenar los datos parciales
 
+
+  BluetoothProvider() {
+    _restoreLastDevice();
+  }
+
+  String? _lastDeviceName;
+
+  /// Bumped on every mutation of [_dataBuffer] so [readings] knows when its
+  /// cached parse is stale.
+  int _dataVersion = 0;
+  int _readingsVersion = -1;
+  List<Reading> _readingsCache = const <Reading>[];
 
   List<Map<String, dynamic>> get messages => _messages;
   List<List<String>> get dataBuffer => _dataBuffer;
   bool get isConnected => _isConnected;
   bool get isConnecting => _isConnecting;
+  bool get isScanning => _isScanning;
   bool get isGenerating => _isGenerating;
   BluetoothDevice? get lastDevice => _lastDevice;
+  bool get hasData => _dataBuffer.isNotEmpty;
 
+  /// Name of the device currently connected, if any.
+  String? get connectedDeviceName {
+    final BluetoothDevice? device = _device;
+    if (device == null || !_isConnected) return null;
+    final String name = device.platformName;
+    return name.isNotEmpty ? name : device.remoteId.toString();
+  }
+
+  /// Address of the device currently connected, if any. Derived from the live
+  /// connection rather than from [lastDevice], which only tracks devices that
+  /// went through [connectToDevice].
+  String? get connectedDeviceId {
+    final BluetoothDevice? device = _device;
+    if (device == null || !_isConnected) return null;
+    return device.remoteId.toString();
+  }
+
+  /// Name of the last device connected to, remembered across launches so the
+  /// header and the "Conectar automáticamente" row can show it while offline.
+  String? get lastKnownDeviceName => _lastDeviceName;
+
+  /// [dataBuffer] parsed into typed rows, oldest first. Malformed lines are
+  /// skipped rather than throwing while the UI builds.
+  List<Reading> get readings {
+    if (_readingsVersion != _dataVersion) {
+      final List<Reading> parsed = <Reading>[];
+      for (final List<String> row in _dataBuffer) {
+        final Reading? reading = Reading.tryParse(row);
+        if (reading != null) parsed.add(reading);
+      }
+      parsed.sort((Reading a, Reading b) => a.timestamp.compareTo(b.timestamp));
+      _readingsCache = List<Reading>.unmodifiable(parsed);
+      _readingsVersion = _dataVersion;
+    }
+    return _readingsCache;
+  }
+
+  /// Distinct sampling points present in the downloaded data.
+  List<String> get samplingPoints {
+    final Set<String> points = <String>{};
+    for (final Reading reading in readings) {
+      points.add(reading.punto);
+    }
+    final List<String> sorted = points.toList()..sort();
+    return sorted;
+  }
+
+  Future<void> _restoreLastDevice() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? raw = prefs.getString('lastDevice');
+      if (raw == null) return;
+      final Map<String, dynamic> data =
+          jsonDecode(raw) as Map<String, dynamic>;
+      _lastDevice = BluetoothDevice.fromId(data['id'] as String);
+      _lastDeviceName = data['name'] as String?;
+      notifyListeners();
+    } catch (e) {
+      print('No se pudo restaurar el último dispositivo: $e');
+    }
+  }
+
+
+  bool _isScanning = false;
+  StreamSubscription<List<ScanResult>>? _scanResultsSubscription;
+  StreamSubscription<bool>? _scanStateSubscription;
 
   StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
   StreamSubscription<List<int>>? _dataSubscription;
@@ -51,7 +122,7 @@ class BluetoothProvider extends ChangeNotifier {
     _isConnected = false;
 
     // Verificar si el Bluetooth está encendido, y pedir activarlo si no lo está
-    if (_deviceState != BluetoothAdapterState.on) {
+    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
       await FlutterBluePlus.turnOn();
     }
 
@@ -109,7 +180,7 @@ class BluetoothProvider extends ChangeNotifier {
   }
 
   Future<void> connectToLastDevice() async {
-    if (_deviceState != BluetoothAdapterState.on) {
+    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
       await FlutterBluePlus.turnOn();
     }
     try {
@@ -130,6 +201,8 @@ class BluetoothProvider extends ChangeNotifier {
 
   // Métodos privados para persistencia
   Future<void> _saveLastDevice(BluetoothDevice device) async {
+    _lastDevice = device;
+    _lastDeviceName = device.platformName;
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('lastDevice', jsonEncode({
       'id': device.remoteId.toString(),
@@ -149,31 +222,36 @@ class BluetoothProvider extends ChangeNotifier {
 
   Future<void> startScanning() async {
     // Verificar si el Bluetooth está encendido, y pedir activarlo si no lo está
-    if (_deviceState != BluetoothAdapterState.on) {
+    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
       await FlutterBluePlus.turnOn();
     }
     try {
-      _isConnecting = true;
+      _isScanning = true;
       notifyListeners();
+
+      // Re-subscribe rather than stacking another listener on every scan, and
+      // subscribe before starting so no early result is missed.
+      await _scanResultsSubscription?.cancel();
+      _scanResultsSubscription = FlutterBluePlus.scanResults.listen((results) {
+        scanResults = results;
+        notifyListeners();
+      });
+
+      await _scanStateSubscription?.cancel();
+      _scanStateSubscription = FlutterBluePlus.isScanning.listen((scanning) {
+        _isScanning = scanning;
+        notifyListeners();
+      });
 
       // Buscar dispositivos del sistema
       var withServices = [Guid("180f")]; // Ejemplo: Servicio de nivel de batería
       systemDevices = await FlutterBluePlus.systemDevices(withServices);
 
-      // Inicia el escaneo
+      // Inicia el escaneo. El estado real lo refleja FlutterBluePlus.isScanning.
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
-
-
-      // Escucha resultados de escaneo
-      FlutterBluePlus.scanResults.listen((results) {
-        scanResults = results;
-        notifyListeners();
-      });
     } catch (e) {
       print('Error during scan: $e');
-    } finally {
-      await Future.delayed(const Duration(seconds: 10));
-      _isConnecting = false;
+      _isScanning = false;
       notifyListeners();
     }
   }
@@ -181,7 +259,7 @@ class BluetoothProvider extends ChangeNotifier {
   Future<void> stopScan() async {
     try {
       await FlutterBluePlus.stopScan();
-      _isConnecting = false;
+      _isScanning = false;
       notifyListeners();
     } catch (e) {
       print('Error stopping scan: $e');
@@ -209,7 +287,6 @@ class BluetoothProvider extends ChangeNotifier {
 
   void _listenToConnectionState() {
     _connectionSubscription = _device?.connectionState.listen((state) {
-      _deviceState = state;
       _isConnected = state == BluetoothConnectionState.connected;
       notifyListeners();
     });
@@ -283,6 +360,7 @@ class BluetoothProvider extends ChangeNotifier {
         if (message == "y"){
           _isData = true;
           _dataBuffer = [];
+          _dataVersion++;
         }else{
           _isData = false;
           _isGenerating = false;
@@ -313,6 +391,7 @@ class BluetoothProvider extends ChangeNotifier {
 
   void clearData(){
     _dataBuffer.clear();
+    _dataVersion++;
     notifyListeners();
   }
 
@@ -366,6 +445,7 @@ class BluetoothProvider extends ChangeNotifier {
     for (String line in lines) {
       if (line.isNotEmpty) {
         _dataBuffer.add(line.split(";"));
+        _dataVersion++;
         // errorMessage(line);
       }
     }
@@ -398,11 +478,15 @@ class BluetoothProvider extends ChangeNotifier {
   }
 
   Future<void> shareCsv() async {
+    if (_dataBuffer.isEmpty) {
+      errorMessage("No hay datos para exportar");
+      return;
+    }
     try {
       final directory = await getTemporaryDirectory();
       final filePath = '${directory.path}/sensa.csv';
       final file = File(filePath);
-      await file.writeAsString(_dataBuffer.map((row) => row.join(";")).join("\n"));
+      await file.writeAsString(generateCsv());
 
       await Share.shareXFiles([XFile(filePath)], text: "Aquí tienes los datos en formato CSV");
     } catch (e) {
@@ -433,6 +517,8 @@ class BluetoothProvider extends ChangeNotifier {
   void dispose() {
     _connectionSubscription?.cancel();
     _dataSubscription?.cancel();
+    _scanResultsSubscription?.cancel();
+    _scanStateSubscription?.cancel();
     super.dispose();
   }
 }
